@@ -5,13 +5,13 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-workspace = "2YNJZeUULDp4yfwvStee1EBKAsuJmXiv4icsdfEgiLmc"
+workspace = "266V7Jct9EVWPeHscDwBpL13251EMUyak7WR9QiT59kQ"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "Localnet"
+cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

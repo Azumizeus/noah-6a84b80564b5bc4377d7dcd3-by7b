@@ -1,0 +1,15 @@
+
+
+  buildpact - LiteSVM
+    ✔ creates the project with creator as approved member[0]
+    ✔ adds two more members (creator signs)
+    ✔ rejects add_member from a non-creator signer
+    ✔ members approve the pact
+    ✔ finalizes the pact once all members approved and shares sum to 100%
+    ✔ funds the finalized project's vault
+    ✔ distributes funds: protocol gets exactly 2%, members split 98% pro-rata
+    ✔ rejects funding a still-open project
+
+
+  8 passing (71ms)
+
