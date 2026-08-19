@@ -5,7 +5,7 @@ import { LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
 import { BN, type Program } from '@coral-xyz/anchor';
 import {
   getProgram, getProvider, getReadonlyProgram, findVaultPda,
-  fetchAllProjects, distribute, fund,
+  fetchAllProjects, distribute, fund, finalize,
 } from '../lib/anchor';
 import { parseTxError, type ChainPact } from '../lib/pacts';
 
@@ -98,7 +98,7 @@ export function usePactActions(refresh: () => void) {
   const program = useAnchorProgram();
   const { publicKey } = useWallet();
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [busyAction, setBusyAction] = useState<'distribute' | 'fund' | null>(null);
+  const [busyAction, setBusyAction] = useState<'distribute' | 'fund' | 'finalize' | null>(null);
   const [txState, setTxState] = useState<TxState | null>(null);
 
   const runDistribute = useCallback(async (pact: ChainPact) => {
@@ -139,5 +139,22 @@ export function usePactActions(refresh: () => void) {
     }
   }, [program, publicKey, refresh]);
 
-  return { busyId, busyAction, txState, runDistribute, runFund };
+  const runFinalize = useCallback(async (pact: ChainPact) => {
+    if (!publicKey) return;
+    setBusyId(pact.pda.toBase58());
+    setBusyAction('finalize');
+    setTxState(null);
+    try {
+      const sig = await finalize(program, publicKey, pact.pda);
+      setTxState({ kind: 'success', text: `Projet « ${pact.title} » finalisé et verrouillé on-chain.`, sig });
+      refresh();
+    } catch (e) {
+      setTxState({ kind: 'error', text: parseTxError(e) });
+    } finally {
+      setBusyId(null);
+      setBusyAction(null);
+    }
+  }, [program, publicKey, refresh]);
+
+  return { busyId, busyAction, txState, runDistribute, runFund, runFinalize };
 }
