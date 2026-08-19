@@ -1,0 +1,4 @@
+// DESIGN_RATIONALE.md
+- **Sombre profond (#030308) plutôt que gris zinc** : la teinte violacée sous-jacente relie visuellement le fond à la marque Solana sans tomber dans le "Web2 slate" plat. Les orbes `radial-gradient` violet/neon/or créent un halo vivant en pur CSS — zéro image, 60fps.
+- **Hiérarchie typographique stricte (1.25) + Space Mono réservé aux chiffres** : les montants SOL en `tabular-nums` alignent verticalement, l'œil scanne les data comme sur Tensor/Jupiter. Space Grotesk porte l'UI avec un caractère tech sobre.
+- **Glassmorphism discipliné** (blur 12px, bordure 1px rgba(153,69,255,0.2)) : la transparence n'est jamais gratuite — chaque panneau garde un bord violacé fin qui signe l'appartenance produit, et un halo hover qui répond instantanément (200ms). Accents solides (jamais de dégradé sur texte) pour garantir AAA normal sur tout le corpus lisible.
