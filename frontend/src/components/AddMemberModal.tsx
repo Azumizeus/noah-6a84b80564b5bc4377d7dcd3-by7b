@@ -1,3 +1,7 @@
+Ton architecture est bien pensée — tu utilises déjà PactCard et usePactActions. On va faire proprement :
+1 fichier nouveau + 2 fichiers modifiés (copier-coller complet).
+
+ÉTAPE 1 — Crée frontend/src/components/AddMemberModal.tsx (nouveau fichier)
 import { useState } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { PublicKey } from '@solana/web3.js';
