@@ -1,0 +1,10 @@
+// Phase 2 — requires `npm install @supabase/supabase-js` and env vars VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY (add to Vercel env + .env.local).
+import { createClient } from '@supabase/supabase-js';
+import type { BuilderProfile } from './profile';
+export type { BuilderProfile } from './profile';
+const supabase = createClient(import.meta.env.VITE_SUPABASE_URL as string, import.meta.env.VITE_SUPABASE_ANON_KEY as string);
+const toLocal = (row: any): BuilderProfile => ({ wallet: row.wallet, pseudo: row.pseudo, bio: row.bio, skills: row.skills ?? [], links: row.links ?? {}, availability: row.availability, updatedAt: new Date(row.updated_at).getTime() });
+export async function fetchProfile(wallet: string): Promise<BuilderProfile | null> { const { data, error } = await supabase.from('builder_profiles').select('*').eq('wallet', wallet).maybeSingle(); if (error) throw error; return data ? toLocal(data) : null; }
+export async function listProfiles(): Promise<BuilderProfile[]> { const { data, error } = await supabase.from('builder_profiles').select('*').order('updated_at', { ascending: false }); if (error) throw error; return (data ?? []).map(toLocal); }
+export async function upsertProfile(profile: BuilderProfile): Promise<BuilderProfile> { const { data, error } = await supabase.from('builder_profiles').upsert({ wallet: profile.wallet, pseudo: profile.pseudo, bio: profile.bio, skills: profile.skills, links: profile.links, availability: profile.availability, updated_at: new Date(profile.updatedAt).toISOString() }).select().single(); if (error) throw error; return toLocal(data); }
+export async function verifyOwnership(wallet: string, publicKey: { toBase58(): string }, signMessage: (message: Uint8Array) => Promise<Uint8Array>): Promise<boolean> { if (publicKey.toBase58() !== wallet) return false; const message = new TextEncoder().encode(`buildpact:profile:${wallet}`); await signMessage(message); console.warn('Client-side check is anti-spoof UX only; real verification must move server-side (Supabase Edge Function) before mainnet.'); return true; }
