@@ -1,62 +1,19 @@
 // src/pages/DashboardPage.tsx
-import { useCallback, useEffect, useState } from 'react';
-import { useConnection, useWallet } from '@solana/wallet-adapter-react';
+import { useCallback, useState } from 'react';
+import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
-import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { DashboardLayout, FadeInUp } from '../components/DashboardLayout';
-import WalletButton from '../components/WalletButton';
+import AppWalletButton from '../components/AppWalletButton';
 import StatsCard from '../components/StatsCard';
 import PactCard from '../components/PactCard';
 import EmptyState from '../components/EmptyState';
-
-type Pact = {
-  id: string;
-  title: string;
-  counterparty: string;
-  shareBps: number;
-  claimable: number;
-  totalEarned: number;
-  status: 'active' | 'pending' | 'closed';
-  lastClaimAt?: string;
-};
-
-// Données démo des pactes — remplacées par les comptes Anchor à la phase suivante
-const PACTS: Pact[] = [
-  { id: 'pact-01', title: 'Revenue Share — Marketplace Fees', counterparty: '9WzD…E9gC',
-    shareBps: 2500, claimable: 12.5, totalEarned: 87.3124, status: 'active', lastClaimAt: 'il y a 2 h' },
-  { id: 'pact-02', title: 'NFT Royalties — Genesis Drop', counterparty: '5HsT…kL9p',
-    shareBps: 1000, claimable: 5.9231, totalEarned: 32.1047, status: 'active', lastClaimAt: 'il y a 1 j' },
-  { id: 'pact-03', title: 'Validator Commission Split', counterparty: '2PcE…mN7r',
-    shareBps: 5000, claimable: 0, totalEarned: 23.1189, status: 'pending', lastClaimAt: 'il y a 3 j' },
-  { id: 'pact-04', title: 'Q1 Bonus — Closed Pact', counterparty: '7FkL…tR4s',
-    shareBps: 1500, claimable: 0, totalEarned: 5.0, status: 'closed', lastClaimAt: 'il y a 14 j' },
-];
+import { PACTS } from '../lib/pacts';
 
 export function DashboardPage() {
-  const { connection } = useConnection();
-  const { publicKey, connected, connecting, disconnect } = useWallet();
+  const { connected } = useWallet();
   const { setVisible } = useWalletModal();
-
-  const [balance, setBalance] = useState<number | null>(null);
   const [claimingId, setClaimingId] = useState<string | null>(null);
 
-  // Solde réel du wallet connecté (devnet)
-  useEffect(() => {
-    if (!publicKey) { setBalance(null); return; }
-    let cancelled = false;
-    connection
-      .getBalance(publicKey)
-      .then((lamports) => { if (!cancelled) setBalance(lamports / LAMPORTS_PER_SOL); })
-      .catch(() => { if (!cancelled) setBalance(null); });
-    return () => { cancelled = true; };
-  }, [connection, publicKey]);
-
-  // Ouvre la VRAIE modale de sélection de wallet (Phantom, Solflare…)
-  const handleConnect = useCallback(() => setVisible(true), [setVisible]);
-
-  const handleDisconnect = useCallback(() => { void disconnect(); }, [disconnect]);
-
-  // Claim : exige un wallet connecté — l'appel Anchor au program arrive à la phase suivante
   const handleClaim = useCallback(
     (id: string) => {
       if (!connected) { setVisible(true); return; }
@@ -67,23 +24,10 @@ export function DashboardPage() {
   );
 
   return (
-    <DashboardLayout
-      walletSlot={
-        <WalletButton
-          connected={connected}
-          connecting={connecting}
-          address={publicKey ? publicKey.toBase58() : null}
-          balance={balance}
-          onConnect={handleConnect}
-          onDisconnect={handleDisconnect}
-        />
-      }
-    >
+    <DashboardLayout walletSlot={<AppWalletButton />}>
       <FadeInUp>
         <header className="mb-6 sm:mb-8">
-          <p className="font-mono text-xs uppercase tracking-wider text-accent-neon">
-            Revenue Share Protocol
-          </p>
+          <p className="font-mono text-xs uppercase tracking-wider text-accent-neon">Revenue Share Protocol</p>
           <h1 className="mt-1 font-sans text-2xl font-bold tracking-tight text-white sm:text-3xl">
             Your on-chain earnings, <span className="text-accent-violet">unlocked.</span>
           </h1>
