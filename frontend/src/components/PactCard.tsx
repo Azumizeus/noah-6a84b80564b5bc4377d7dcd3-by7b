@@ -26,15 +26,20 @@ export default function PactCard({ pact, walletConnected, busyAction, onDistribu
   const statusColor = pact.status === 'active' ? 'text-emerald-400 border-emerald-400/30 bg-emerald-400/10' : 'text-amber-400 border-amber-400/30 bg-amber-400/10';
   const statusLabel = pact.status === 'active' ? 'Finalisé' : 'Ouvert';
 
-  // ── État d'approbation ──
   const myAddr = publicKey?.toBase58();
   const me = pact.members.find((m) => m.wallet.toBase58() === myAddr);
   const iAmMember = !!me;
   const iHaveApproved = me?.approved ?? false;
+  const iAmCreator = pact.creator.toBase58() === myAddr;
   const approvedCount = pact.members.filter((m) => m.approved).length;
   const allApproved = pact.members.length > 0 && pact.members.every((m) => m.approved);
 
-  const canFinalize = pact.members.length >= 2 && allApproved;
+  // Total des parts — le program exige EXACTEMENT 10000 bps (100%)
+  const totalBps = pact.members.reduce((sum, m) => sum + m.shareBps, 0);
+  const sharesComplete = totalBps === 10000;
+  const totalPct = totalBps / 100;
+
+  const canFinalize = pact.members.length >= 2 && allApproved && sharesComplete && iAmCreator;
   const canDistribute = pact.vaultBalanceSol > 0;
 
   const handleApprove = async () => {
@@ -50,6 +55,16 @@ export default function PactCard({ pact, walletConnected, busyAction, onDistribu
       setApproving(false);
     }
   };
+
+  const finalizeBlockReason = !iAmCreator
+    ? 'Seul le founder peut finaliser'
+    : pact.members.length < 2
+      ? 'Ajoute au moins 2 membres'
+      : !sharesComplete
+        ? `Total des parts = ${totalPct.toFixed(2)}% — doit être exactement 100%`
+        : !allApproved
+          ? `${approvedCount}/${pact.members.length} approbations`
+          : '';
 
   return (
     <>
@@ -83,20 +98,26 @@ export default function PactCard({ pact, walletConnected, busyAction, onDistribu
           </div>
         </div>
 
-        {/* ── Statut d'approbation des membres ── */}
-        {pact.status !== 'active' && pact.members.length > 0 && (
+        {pact.members.length > 0 && (
           <div className="mt-4 space-y-1 rounded-lg border border-white/5 bg-black/30 p-3">
             {pact.members.map((m) => (
               <div key={m.wallet.toBase58()} className="flex items-center justify-between font-mono text-xs">
                 <span className="text-ink-400">
-                  {formatAddress(m.wallet.toBase58())} · {(m.shareBps / 100).toFixed(0)}%
+                  {formatAddress(m.wallet.toBase58())} · {(m.shareBps / 100).toFixed(2)}%
                   {m.wallet.toBase58() === myAddr && <span className="ml-1 text-accent-violet">(toi)</span>}
+                  {m.wallet.toBase58() === pact.creator.toBase58() && <span className="ml-1">👑</span>}
                 </span>
-                <span className={m.approved ? 'text-emerald-400' : 'text-amber-400'}>
-                  {m.approved ? '✓ approuvé' : '⏳ en attente'}
-                </span>
+                {pact.status !== 'active' && (
+                  <span className={m.approved ? 'text-emerald-400' : 'text-amber-400'}>
+                    {m.approved ? '✓ approuvé' : '⏳ en attente'}
+                  </span>
+                )}
               </div>
             ))}
+            <div className={`flex justify-between border-t border-white/5 pt-1 font-mono text-xs font-bold ${sharesComplete ? 'text-emerald-400' : 'text-red-400'}`}>
+              <span>Total</span>
+              <span>{totalPct.toFixed(2)}% {sharesComplete ? '✓' : '⚠️ doit = 100%'}</span>
+            </div>
           </div>
         )}
 
@@ -104,7 +125,6 @@ export default function PactCard({ pact, walletConnected, busyAction, onDistribu
           <div className="mt-6 space-y-3 border-t border-white/5 pt-4">
             {pact.status !== 'active' && (
               <div className="flex flex-col gap-2">
-                {/* ── Bouton APPROUVER (membre connecté, pas encore signé) ── */}
                 {iAmMember && !iHaveApproved && (
                   <button
                     onClick={handleApprove}
@@ -125,19 +145,18 @@ export default function PactCard({ pact, walletConnected, busyAction, onDistribu
                   </div>
                 )}
 
-                <button
-                  onClick={() => setShowAddMember(true)}
-                  disabled={busyAction !== null}
-                  className="w-full rounded-lg border border-purple-500/50 bg-purple-500/10 py-2 text-sm font-medium text-purple-300 transition hover:bg-purple-500/20 disabled:opacity-50"
-                >
-                  + Ajouter membre
-                </button>
+                {/* Ajout de membre : réservé au founder, uniquement si pact ouvert */}
+                {iAmCreator && (
+                  <button
+                    onClick={() => setShowAddMember(true)}
+                    disabled={busyAction !== null}
+                    className="w-full rounded-lg border border-purple-500/50 bg-purple-500/10 py-2 text-sm font-medium text-purple-300 transition hover:bg-purple-500/20 disabled:opacity-50"
+                  >
+                    + Ajouter membre
+                  </button>
+                )}
                 <div className="text-xs text-ink-400">
-                  {pact.members.length < 2
-                    ? '⚠️ Minimum 2 membres requis pour finaliser'
-                    : !allApproved
-                      ? `⏳ ${approvedCount}/${pact.members.length} membres ont approuvé`
-                      : '✅ Tous les membres ont approuvé — prêt à finaliser'}
+                  {finalizeBlockReason ? `⏳ ${finalizeBlockReason}` : '✅ Prêt à finaliser'}
                 </div>
               </div>
             )}
@@ -165,24 +184,20 @@ export default function PactCard({ pact, walletConnected, busyAction, onDistribu
 
             <div className="flex gap-2">
               {pact.status !== 'active' ? (
-                <button
-                  onClick={() => onFinalize(pact)}
-                  disabled={busyAction !== null || !canFinalize}
-                  className="flex-1 rounded-lg bg-accent-violet px-4 py-2 text-sm font-medium text-white transition hover:bg-accent-violet/90 disabled:opacity-50"
-                  title={
-                    pact.members.length < 2
-                      ? 'Ajoute au moins 2 membres'
-                      : !allApproved
-                        ? `En attente : ${approvedCount}/${pact.members.length} approbations`
-                        : ''
-                  }
-                >
-                  {busyAction === 'finalize'
-                    ? 'Finalisation...'
-                    : allApproved
-                      ? '🔒 Finaliser'
-                      : `🔒 Finaliser (${approvedCount}/${pact.members.length} approuvés)`}
-                </button>
+                iAmCreator ? (
+                  <button
+                    onClick={() => onFinalize(pact)}
+                    disabled={busyAction !== null || !canFinalize}
+                    className="flex-1 rounded-lg bg-accent-violet px-4 py-2 text-sm font-medium text-white transition hover:bg-accent-violet/90 disabled:opacity-50"
+                    title={finalizeBlockReason}
+                  >
+                    {busyAction === 'finalize' ? 'Finalisation...' : '🔒 Finaliser (founder)'}
+                  </button>
+                ) : (
+                  <div className="flex-1 rounded-lg border border-white/10 bg-black/30 px-4 py-2 text-center text-xs text-ink-400">
+                    🔒 Seul le founder peut finaliser et débloquer la rémunération
+                  </div>
+                )
               ) : (
                 <button
                   onClick={() => onDistribute(pact)}
