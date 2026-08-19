@@ -19,7 +19,7 @@ const FILTERS: { id: Filter; label: string }[] = [
 export function PactsPage() {
   const { connected } = useWallet();
   const { pacts, loading, error, refresh } = useProjects();
-  const { busyId, busyAction, txState, runDistribute, runFund } = usePactActions(refresh);
+  const { busyId, busyAction, txState, runDistribute, runFund, runFinalize } = usePactActions(refresh);
   const [filter, setFilter] = useState<Filter>('all');
   const [wizardOpen, setWizardOpen] = useState(false);
 
@@ -101,6 +101,7 @@ export function PactsPage() {
                 busyAction={busyId === pact.pda.toBase58() ? busyAction : null}
                 onDistribute={runDistribute}
                 onFund={runFund}
+                onFinalize={runFinalize}
               />
             </FadeInUp>
           ))}
