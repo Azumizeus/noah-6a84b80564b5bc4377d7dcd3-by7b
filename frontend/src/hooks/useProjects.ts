@@ -14,7 +14,7 @@ export function useAnchorProgram(): Program {
   const { publicKey, signTransaction, signAllTransactions } = useWallet();
   return useMemo(() => {
     if (publicKey && signTransaction && signAllTransactions) {
-      return getProgram({ publicKey, signTransaction, signAllTransactions });
+     return getProgram(getProvider({ publicKey, signTransaction, signAllTransactions }));
     }
     return getReadonlyProgram();
   }, [publicKey, signTransaction, signAllTransactions]);
