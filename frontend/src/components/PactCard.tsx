@@ -5,12 +5,13 @@ import { truncateAddress, type ChainPact } from '../lib/pacts';
 interface PactCardProps {
   pact: ChainPact;
   walletConnected: boolean;
-  busyAction: 'distribute' | 'fund' | null;
+  busyAction: 'distribute' | 'fund' | 'finalize' | null;
   onDistribute: (pact: ChainPact) => void;
   onFund: (pact: ChainPact, amountSol: number) => void;
+  onFinalize: (pact: ChainPact) => void;
 }
 
-export function PactCard({ pact, walletConnected, busyAction, onDistribute, onFund }: PactCardProps) {
+export function PactCard({ pact, walletConnected, busyAction, onDistribute, onFund, onFinalize }: PactCardProps) {
   const [fundOpen, setFundOpen] = useState(false);
   const [amount, setAmount] = useState('0.1');
 
@@ -19,6 +20,10 @@ export function PactCard({ pact, walletConnected, busyAction, onDistribute, onFu
   const sharePct = (pact.myShareBps / 100).toFixed(2);
   const distributing = busyAction === 'distribute';
   const funding = busyAction === 'fund';
+  const finalizing = busyAction === 'finalize';
+
+  const allApproved = approvedCount === pact.members.length && pact.members.length > 0;
+  const canFinalize = walletConnected && !isActive && allApproved && busyAction === null;
 
   const distributeDisabled = !walletConnected || !isActive || pact.vaultBalanceSol <= 0 || busyAction !== null;
   const distributeReason = !walletConnected
@@ -112,6 +117,23 @@ export function PactCard({ pact, walletConnected, busyAction, onDistribute, onFu
         >
           Fund
         </button>
+        {!isActive && (
+          <button
+            type="button"
+            onClick={() => onFinalize(pact)}
+            disabled={!canFinalize}
+            title={
+              !walletConnected
+                ? 'Connectez votre wallet'
+                : !allApproved
+                  ? 'Tous les membres doivent approuver avant de finaliser'
+                  : 'Verrouille le projet on-chain'
+            }
+            className="inline-flex h-11 items-center rounded-xl bg-accent-violet px-3 text-sm font-bold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {finalizing ? '…' : '🔒 Finaliser'}
+          </button>
+        )}
       </div>
 
       {/* Mini-form Fund */}
