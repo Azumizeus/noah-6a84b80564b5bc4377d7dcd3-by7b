@@ -85,6 +85,21 @@ async function buildAndSend(
         | Transaction
         | VersionedTransaction;
 
+      // ═══ GARDE-FOU MOBILE (Seed Vault / MWA) ═══
+      // Sur Solana Seeker, le wallet peut renvoyer la tx SANS la signer
+      // (session MWA stale, double wallet connecté). On vérifie AVANT
+      // serialize() sinon web3.js jette "Missing signature" brutalement.
+      const mySig = (signed as Transaction).signatures?.find(
+        (s) => s.publicKey.equals(wallet.publicKey)
+      );
+      if (!mySig?.signature) {
+        throw new Error(
+          'Le wallet n\'a pas signé la transaction. Sur mobile : déconnecte et reconnecte UN SEUL wallet, puis réessaie.'
+        );
+      }
+      // ═══ FIN GARDE-FOU ═══
+
+      const raw = signed.serialize();
       const raw = signed.serialize();
 
       const sig = await connection.sendRawTransaction(raw, {
