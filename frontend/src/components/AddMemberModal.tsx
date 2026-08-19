@@ -1,7 +1,3 @@
-Ton architecture est bien pensée — tu utilises déjà PactCard et usePactActions. On va faire proprement :
-1 fichier nouveau + 2 fichiers modifiés (copier-coller complet).
-
-ÉTAPE 1 — Crée frontend/src/components/AddMemberModal.tsx (nouveau fichier)
 import { useState } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { PublicKey } from '@solana/web3.js';
@@ -37,7 +33,7 @@ export default function AddMemberModal({ projectPda, projectTitle, onClose, onSu
       const shareBps = Math.round(parseFloat(share) * 100);
 
       if (shareBps <= 0 || shareBps > 10000) {
-        throw new Error('Le share doit être entre 0.01% et 100%');
+        throw new Error('Le share doit etre entre 0.01% et 100%');
       }
 
       await addMember(program, publicKey, projectPda, memberWallet, role.slice(0, 24), shareBps);
@@ -70,14 +66,14 @@ export default function AddMemberModal({ projectPda, projectTitle, onClose, onSu
               type="text"
               value={wallet}
               onChange={(e) => setWallet(e.target.value)}
-              placeholder="Ex: DMg5KfHSSgYnUd4rzFULE4SDF4s25NJ9vkypoiAv2hxa"
+              placeholder="DMg5KfHSSgYnUd4rzFULE4SDF4s25NJ9vkypoiAv2hxa"
               className="w-full bg-black/50 border border-purple-500/30 rounded-lg px-3 py-2 text-white text-sm focus:border-purple-500 focus:outline-none"
               required
             />
           </div>
 
           <div>
-            <label className="block text-sm text-gray-300 mb-1">Rôle (max 24 caractères)</label>
+            <label className="block text-sm text-gray-300 mb-1">Role (max 24 caracteres)</label>
             <input
               type="text"
               value={role}
