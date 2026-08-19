@@ -141,6 +141,16 @@ export function usePactActions(refresh: () => void) {
 
   const runFinalize = useCallback(async (pact: ChainPact) => {
     if (!publicKey) return;
+
+    // ═══ GARDE FRONT : seul le founder peut finaliser ═══
+    if (!pact.creator.equals(publicKey)) {
+      setTxState({
+        kind: 'error',
+        text: 'Seul le créateur du pact peut le finaliser. Reconnecte-toi avec le wallet founder.',
+      });
+      return;
+    }
+
     setBusyId(pact.pda.toBase58());
     setBusyAction('finalize');
     setTxState(null);
