@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { formatSol, formatAddress, parseTxError } from '../lib/pacts';
 import { approve } from '../lib/anchor';
 import { useAnchorProgram } from '../hooks/useProjects';
+import { formatSol, formatAddress, parseTxError } from '../lib/pacts';
 import type { Pact, PactAction } from '../types/pact';
 import AddMemberModal from './AddMemberModal';
 
@@ -26,15 +26,13 @@ export default function PactCard({ pact, walletConnected, busyAction, onDistribu
   const statusColor = pact.status === 'active' ? 'text-emerald-400 border-emerald-400/30 bg-emerald-400/10' : 'text-amber-400 border-amber-400/30 bg-amber-400/10';
   const statusLabel = pact.status === 'active' ? 'Finalisé' : 'Ouvert';
 
-  // --- Approbations ---
+  // ── État d'approbation ──
   const myAddr = publicKey?.toBase58();
-  const me = myAddr
-    ? pact.members.find((m: any) => m.wallet?.toBase58?.() === myAddr)
-    : undefined;
-  const iAmMember = Boolean(me);
-  const iHaveApproved = Boolean((me as any)?.approved);
-  const approvedCount = pact.members.filter((m: any) => m.approved).length;
-  const allApproved = pact.members.length > 0 && approvedCount === pact.members.length;
+  const me = pact.members.find((m) => m.wallet.toBase58() === myAddr);
+  const iAmMember = !!me;
+  const iHaveApproved = me?.approved ?? false;
+  const approvedCount = pact.members.filter((m) => m.approved).length;
+  const allApproved = pact.members.length > 0 && pact.members.every((m) => m.approved);
 
   const canFinalize = pact.members.length >= 2 && allApproved;
   const canDistribute = pact.vaultBalanceSol > 0;
@@ -85,30 +83,28 @@ export default function PactCard({ pact, walletConnected, busyAction, onDistribu
           </div>
         </div>
 
+        {/* ── Statut d'approbation des membres ── */}
+        {pact.status !== 'active' && pact.members.length > 0 && (
+          <div className="mt-4 space-y-1 rounded-lg border border-white/5 bg-black/30 p-3">
+            {pact.members.map((m) => (
+              <div key={m.wallet.toBase58()} className="flex items-center justify-between font-mono text-xs">
+                <span className="text-ink-400">
+                  {formatAddress(m.wallet.toBase58())} · {(m.shareBps / 100).toFixed(0)}%
+                  {m.wallet.toBase58() === myAddr && <span className="ml-1 text-accent-violet">(toi)</span>}
+                </span>
+                <span className={m.approved ? 'text-emerald-400' : 'text-amber-400'}>
+                  {m.approved ? '✓ approuvé' : '⏳ en attente'}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
         {walletConnected && (
           <div className="mt-6 space-y-3 border-t border-white/5 pt-4">
             {pact.status !== 'active' && (
               <div className="flex flex-col gap-2">
-                <button
-                  onClick={() => setShowAddMember(true)}
-                  disabled={busyAction !== null}
-                  className="w-full rounded-lg border border-purple-500/50 bg-purple-500/10 py-2 text-sm font-medium text-purple-300 transition hover:bg-purple-500/20 disabled:opacity-50"
-                >
-                  + Ajouter membre
-                </button>
-
-                {/* Compteur d'approbations */}
-                <div className="rounded-lg border border-white/5 bg-black/30 px-3 py-2 text-xs">
-                  {pact.members.length < 2 ? (
-                    <span className="text-amber-400">⚠️ Minimum 2 membres requis pour finaliser</span>
-                  ) : allApproved ? (
-                    <span className="text-emerald-400">✅ Approbations : {approvedCount}/{pact.members.length} — prêt à finaliser</span>
-                  ) : (
-                    <span className="text-amber-400">⏳ Approbations : {approvedCount}/{pact.members.length} — en attente de signatures</span>
-                  )}
-                </div>
-
-                {/* Bouton Approuver : visible si je suis membre et pas encore approuvé */}
+                {/* ── Bouton APPROUVER (membre connecté, pas encore signé) ── */}
                 {iAmMember && !iHaveApproved && (
                   <button
                     onClick={handleApprove}
@@ -118,16 +114,31 @@ export default function PactCard({ pact, walletConnected, busyAction, onDistribu
                     {approving ? 'Signature...' : '✅ Approuver ce pact'}
                   </button>
                 )}
-
                 {iAmMember && iHaveApproved && (
-                  <div className="text-xs text-emerald-400">✅ Vous avez approuvé ce pact</div>
+                  <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 py-2 text-center text-xs text-emerald-400">
+                    ✓ Tu as approuvé ce pact
+                  </div>
                 )}
-
                 {approveError && (
-                  <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-sm text-red-400">
+                  <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-400">
                     {approveError}
                   </div>
                 )}
+
+                <button
+                  onClick={() => setShowAddMember(true)}
+                  disabled={busyAction !== null}
+                  className="w-full rounded-lg border border-purple-500/50 bg-purple-500/10 py-2 text-sm font-medium text-purple-300 transition hover:bg-purple-500/20 disabled:opacity-50"
+                >
+                  + Ajouter membre
+                </button>
+                <div className="text-xs text-ink-400">
+                  {pact.members.length < 2
+                    ? '⚠️ Minimum 2 membres requis pour finaliser'
+                    : !allApproved
+                      ? `⏳ ${approvedCount}/${pact.members.length} membres ont approuvé`
+                      : '✅ Tous les membres ont approuvé — prêt à finaliser'}
+                </div>
               </div>
             )}
 
