@@ -22,6 +22,11 @@ const STAGES = [
   { id: 'both', label: '🤝 Les deux' },
 ] as const;
 
+const inputCls =
+  'w-full rounded border border-white/10 bg-base-800 p-2 text-white';
+const labelCls = 'block text-xs font-semibold text-white';
+const hintCls = 'mt-1 block text-[11px] leading-snug text-ink-400';
+
 export function CreatePactWizard({ onSuccess }: Props) {
   const { publicKey } = useWallet();
   const program = useAnchorProgram();
@@ -45,6 +50,7 @@ export function CreatePactWizard({ onSuccess }: Props) {
   }
 
   const totalShares = myShare + members.reduce((acc, m) => acc + (m.share || 0), 0);
+  const remainingForMembers = 100 - (myShare || 0);
 
   const handleCreate = async () => {
     setLoading(true);
@@ -124,27 +130,56 @@ export function CreatePactWizard({ onSuccess }: Props) {
   return (
     <div className="glass-panel mx-auto max-w-lg p-6">
       <h2 className="mb-1 text-xl font-bold text-white">Créer un Pact</h2>
-      <p className="mb-4 text-xs text-ink-400">Étape {step} / 3</p>
+      <p className="mb-1 text-xs text-ink-400">Étape {step} / 3</p>
+      <p className="mb-4 text-xs text-ink-400">
+        {step === 1 && '1️⃣ Décris ton projet et ta part — 2️⃣ Ajoute les membres — 3️⃣ Finalise on-chain'}
+        {step === 2 && 'Projet créé on-chain ✅ — Maintenant, ajoute les membres du pact'}
+        {step === 3 && 'Dernière étape : approbation et finalisation'}
+      </p>
 
+      {/* ═══════════ ÉTAPE 1 — IDENTITÉ ═══════════ */}
       {step === 1 && (
         <div className="space-y-4">
-          <input
-            className="w-full rounded border border-white/10 bg-base-800 p-2 text-white"
-            placeholder="Titre du projet (ex: App mobile DeFi)"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-          <textarea
-            className="w-full rounded border border-white/10 bg-base-800 p-2 text-white"
-            rows={3}
-            placeholder="Description claire : c'est quoi le projet, dans quoi les gens investissent ou sur quoi ils vont bosser"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
 
+          {/* NOM */}
           <div>
-            <p className="mb-1 text-xs text-ink-400">Le projet cherche :</p>
-            <div className="flex gap-2">
+            <label className={labelCls}>Nom du projet</label>
+            <input
+              className={inputCls}
+              placeholder='Ex : "Seeker Mobile Game"'
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+            <small className={hintCls}>
+              Nom court affiché dans la liste des pacts. Visible publiquement on-chain.
+            </small>
+          </div>
+
+          {/* DESCRIPTION */}
+          <div>
+            <label className={labelCls}>Description</label>
+            <textarea
+              className={inputCls}
+              rows={3}
+              placeholder='Ex : "Jeu mobile space shooter sur Solana Seeker. Les revenus du jeu (achats in-app, NFT) alimentent le vault et sont reversés aux membres selon leurs parts."'
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+            <small className={hintCls}>
+              Explique en 2-3 phrases : <strong>ce que fait le projet</strong>,{' '}
+              <strong>d'où vient l'argent</strong> qui entrera dans le vault, et{' '}
+              <strong>pourquoi quelqu'un devrait te rejoindre</strong>.
+            </small>
+          </div>
+
+          {/* TYPE DE RECHERCHE */}
+          <div>
+            <label className={labelCls}>Le projet cherche :</label>
+            <small className={hintCls}>
+              Indique le profil de membres que tu veux attirer. Informatif uniquement,
+              ça ne bloque rien techniquement.
+            </small>
+            <div className="mt-1 flex gap-2">
               {STAGES.map((s) => (
                 <button
                   key={s.id}
@@ -163,31 +198,64 @@ export function CreatePactWizard({ onSuccess }: Props) {
             </div>
           </div>
 
-          <input
-            className="w-full rounded border border-white/10 bg-base-800 p-2 text-white"
-            placeholder="Ton rôle (ex: Founder)"
-            value={myRole}
-            onChange={(e) => setMyRole(e.target.value)}
-          />
-
+          {/* TON RÔLE */}
           <div>
-            <label className="text-xs text-ink-400">Ta part (%)</label>
+            <label className={labelCls}>Ton rôle dans le projet</label>
+            <input
+              className={inputCls}
+              placeholder='Ex : "Founder / Game Designer"'
+              value={myRole}
+              onChange={(e) => setMyRole(e.target.value)}
+            />
+            <small className={hintCls}>
+              Exemples : "Lead Dev", "Founder", "Artiste 3D". Affiché à côté de ta part.
+            </small>
+          </div>
+
+          {/* TA PART */}
+          <div>
+            <label className={labelCls}>Ta part (%) — créateur</label>
             <input
               type="number"
               min={0}
               max={100}
-              className="w-full rounded border border-white/10 bg-base-800 p-2 text-white"
+              className={inputCls}
               value={myShare}
               onChange={(e) => setMyShare(Number(e.target.value))}
             />
+            <div className="mt-2 rounded-lg border border-accent-violet/25 bg-violet-500/10 p-3 text-[11px] leading-snug text-ink-300">
+              💡 <strong className="text-white">Comment ça marche :</strong> la somme de
+              ta part + les parts des membres (étape 2) doit faire{' '}
+              <strong className="text-white">exactement 100 %</strong>.
+              <br />
+              Exemple : toi 30 % + dev 40 % + investisseur 30 % = 100 % ✅
+              <br />
+              À l'étape suivante, il te restera{' '}
+              <strong className="text-white">{remainingForMembers} %</strong> à répartir.
+            </div>
+            <div className="mt-2 rounded-lg border border-emerald-400/25 bg-emerald-500/10 p-3 text-[11px] leading-snug text-emerald-300">
+              🧮 <strong>Simulation :</strong> si le vault reçoit 10 SOL, tu toucheras{' '}
+              <strong>{((myShare || 0) / 10).toFixed(2)} SOL</strong> à chaque
+              distribution (moins les frais plateforme).
+            </div>
           </div>
 
-          <input
-            className="w-full rounded border border-white/10 bg-base-800 p-2 text-white"
-            placeholder="Adresse wallet protocole (reçoit les fees)"
-            value={protocolWallet}
-            onChange={(e) => setProtocolWallet(e.target.value)}
-          />
+          {/* WALLET PROTOCOLE */}
+          <div>
+            <label className={labelCls}>Wallet des frais plateforme</label>
+            <input
+              className={inputCls}
+              placeholder="Adresse Solana du wallet protocole"
+              value={protocolWallet}
+              onChange={(e) => setProtocolWallet(e.target.value)}
+            />
+            <small className={hintCls}>
+              ⚠️ Ce wallet appartient à la <strong>plateforme BuildPact</strong>, pas au
+              créateur du projet. Le programme lui envoie automatiquement les frais
+              protocol à chaque distribution. Ne le change que si tu sais ce que tu fais
+              (devnet uniquement).
+            </small>
+          </div>
 
           <button
             type="button"
@@ -195,40 +263,52 @@ export function CreatePactWizard({ onSuccess }: Props) {
             disabled={loading || !title || !protocolWallet}
             className="w-full rounded bg-accent-neon py-2 font-bold text-ink-900 disabled:opacity-50"
           >
-            {loading ? 'Création...' : 'Créer le projet'}
+            {loading ? 'Création...' : 'Créer le projet on-chain'}
           </button>
         </div>
       )}
 
+      {/* ═══════════ ÉTAPE 2 — MEMBRES ═══════════ */}
       {step === 2 && (
         <div className="space-y-4">
           <p className="text-sm text-green-400">Projet créé ! ID : {projectId}</p>
           <p className="text-xs text-ink-400">
-            Ajoute des membres (devs, investisseurs...) avec leur rôle et leur part.
-            Le total de toutes les parts doit faire exactement 100%.
+            Ajoute les membres du pact (devs, investisseurs...) avec leur rôle et leur
+            part. Chacun devra approuver avec SON wallet.
           </p>
 
+          <div className="rounded-lg border border-accent-violet/25 bg-violet-500/10 p-3 text-[11px] text-ink-300">
+            💡 Ta part créateur : <strong className="text-white">{myShare} %</strong> —
+            il reste <strong className="text-white">{remainingForMembers} %</strong> à
+            répartir entre les membres. Le total doit faire exactement 100 %.
+          </div>
+
           {members.map((m, i) => (
-            <div key={i} className="flex gap-2">
-              <input
-                className="flex-1 rounded border border-white/10 bg-base-800 p-2 text-sm text-white"
-                placeholder="Wallet address"
-                value={m.wallet}
-                onChange={(e) => updateMember(i, 'wallet', e.target.value)}
-              />
-              <input
-                className="w-24 rounded border border-white/10 bg-base-800 p-2 text-sm text-white"
-                placeholder="Rôle"
-                value={m.role}
-                onChange={(e) => updateMember(i, 'role', e.target.value)}
-              />
-              <input
-                type="number"
-                className="w-16 rounded border border-white/10 bg-base-800 p-2 text-sm text-white"
-                placeholder="%"
-                value={m.share}
-                onChange={(e) => updateMember(i, 'share', Number(e.target.value))}
-              />
+            <div key={i} className="space-y-1">
+              <div className="flex gap-2">
+                <input
+                  className="flex-1 rounded border border-white/10 bg-base-800 p-2 text-sm text-white"
+                  placeholder="Wallet address du membre"
+                  value={m.wallet}
+                  onChange={(e) => updateMember(i, 'wallet', e.target.value)}
+                />
+                <input
+                  className="w-24 rounded border border-white/10 bg-base-800 p-2 text-sm text-white"
+                  placeholder="Rôle"
+                  value={m.role}
+                  onChange={(e) => updateMember(i, 'role', e.target.value)}
+                />
+                <input
+                  type="number"
+                  className="w-16 rounded border border-white/10 bg-base-800 p-2 text-sm text-white"
+                  placeholder="%"
+                  value={m.share}
+                  onChange={(e) => updateMember(i, 'share', Number(e.target.value))}
+                />
+              </div>
+              <small className={hintCls}>
+                Ex : wallet Phantom du dev, rôle "Lead Dev", part 40 %
+              </small>
             </div>
           ))}
 
@@ -242,10 +322,12 @@ export function CreatePactWizard({ onSuccess }: Props) {
 
           <p
             className={
-              'text-sm font-bold ' + (totalShares === 100 ? 'text-green-400' : 'text-amber-400')
+              'text-sm font-bold ' +
+              (totalShares === 100 ? 'text-green-400' : 'text-amber-400')
             }
           >
-            Total des parts : {totalShares}% {totalShares === 100 ? '✓' : '(doit être 100%)'}
+            Total des parts : {totalShares} %{' '}
+            {totalShares === 100 ? '✓' : `(il ${totalShares < 100 ? 'manque' : 'y a'} ${Math.abs(100 - totalShares)} % — doit être 100 %)`}
           </p>
 
           <button
@@ -254,17 +336,23 @@ export function CreatePactWizard({ onSuccess }: Props) {
             disabled={loading || totalShares !== 100}
             className="w-full rounded bg-accent-violet py-2 font-bold text-white disabled:opacity-50"
           >
-            {loading ? 'Ajout...' : members.length > 0 ? 'Ajouter les membres' : 'Continuer (aucun membre)'}
+            {loading
+              ? 'Ajout...'
+              : members.length > 0
+                ? 'Ajouter les membres on-chain'
+                : 'Continuer (aucun membre)'}
           </button>
         </div>
       )}
 
+      {/* ═══════════ ÉTAPE 3 — FINALISATION ═══════════ */}
       {step === 3 && (
         <div className="space-y-4 text-center">
           <p className="text-white">Membres enregistrés !</p>
           <p className="text-sm text-ink-300">
-            En production, chaque membre devra se connecter avec SON wallet pour approuver.
-            Pour tester seul, clique ci-dessous (marche uniquement si tu es le seul membre).
+            En production, chaque membre devra se connecter avec SON wallet pour
+            approuver. Pour tester seul, clique ci-dessous (marche uniquement si tu es
+            le seul membre).
           </p>
           <button
             type="button"
