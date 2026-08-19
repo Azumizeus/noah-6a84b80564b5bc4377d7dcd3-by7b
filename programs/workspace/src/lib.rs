@@ -245,6 +245,20 @@ pub mod workspace {
 
         Ok(())
     }
+
+    // ⬇️ NOUVEAU — suppression d'un projet NON finalisé (créateur uniquement, vault vide)
+    pub fn close_project(ctx: Context<CloseProject>) -> Result<()> {
+        let project = &ctx.accounts.project;
+        require!(
+            project.status != ProjectStatus::Finalized,
+            ErrorCode::AlreadyFinalized
+        );
+        // Le vault doit être strictement vide (compte System sans data = minimum 0)
+        let vault_lamports = ctx.accounts.vault.lamports();
+        require!(vault_lamports == 0, ErrorCode::VaultNotEmpty);
+        Ok(())
+    }
+    // ⬆️ NOUVEAU
 }
 
 #[account]
@@ -421,6 +435,29 @@ pub struct Distribute<'info> {
     pub system_program: Program<'info, System>,
 }
 
+// ⬇️ NOUVEAU — comptes pour close_project
+#[derive(Accounts)]
+pub struct CloseProject<'info> {
+    #[account(
+        mut,
+        close = creator,
+        seeds = [b"project", project.creator.as_ref(), project.project_id.as_bytes()],
+        bump = project.bump,
+        has_one = creator @ ErrorCode::Unauthorized,
+    )]
+    pub project: Account<'info, Project>,
+
+    #[account(
+        seeds = [b"vault", project.key().as_ref()],
+        bump,
+    )]
+    pub vault: SystemAccount<'info>,
+
+    #[account(mut)]
+    pub creator: Signer<'info>,
+}
+// ⬆️ NOUVEAU
+
 #[error_code]
 pub enum ErrorCode {
     #[msg("Math overflow occurred")]
@@ -459,4 +496,8 @@ pub enum ErrorCode {
     MemberMismatch,
     #[msg("Nothing available to distribute")]
     DistributionEmpty,
+    // ⬇️ NOUVEAU
+    #[msg("Vault must be empty before closing the project")]
+    VaultNotEmpty,
+    // ⬆️ NOUVEAU
 }
