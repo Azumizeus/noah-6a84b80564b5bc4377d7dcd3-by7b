@@ -6,6 +6,7 @@ import PactCard from '../components/PactCard';
 import EmptyState from '../components/EmptyState';
 import TxBanner from '../components/TxBanner';
 import AppWalletButton from '../components/AppWalletButton';
+import { CreatePactWizard } from '../components/CreatePactWizard';
 import { useProjects, usePactActions } from '../hooks/useProjects';
 
 type Filter = 'all' | 'active' | 'pending';
@@ -20,6 +21,7 @@ export function PactsPage() {
   const { pacts, loading, error, refresh } = useProjects();
   const { busyId, busyAction, txState, runDistribute, runFund } = usePactActions(refresh);
   const [filter, setFilter] = useState<Filter>('all');
+  const [wizardOpen, setWizardOpen] = useState(false);
 
   const visible = pacts.filter((p) => filter === 'all' || p.status === filter);
 
@@ -62,6 +64,15 @@ export function PactsPage() {
               {f.label}
             </button>
           ))}
+          {connected && (
+            <button
+              type="button"
+              onClick={() => setWizardOpen(true)}
+              className="inline-flex h-11 items-center rounded-xl bg-accent-neon px-4 text-sm font-bold text-ink-900 hover:opacity-90"
+            >
+              + Créer un pact
+            </button>
+          )}
         </div>
       </FadeInUp>
 
@@ -94,6 +105,22 @@ export function PactsPage() {
             </FadeInUp>
           ))}
         </section>
+      )}
+
+      {wizardOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setWizardOpen(false)}
+        >
+          <div className="max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <CreatePactWizard
+              onSuccess={() => {
+                setWizardOpen(false);
+                refresh();
+              }}
+            />
+          </div>
+        </div>
       )}
     </DashboardLayout>
   );
