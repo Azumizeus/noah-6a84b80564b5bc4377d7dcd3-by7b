@@ -6,6 +6,9 @@ import { createProject, addMember, approve, finalize } from '../lib/anchor';
 import { useAnchorProgram } from '../hooks/useProjects';
 import { parseTxError } from '../lib/pacts';
 
+// ═══ Wallet plateforme BuildPact — FIXE, non modifiable ═══
+const PLATFORM_WALLET = 'AVhVM29hD6YRLb2DujhKfF8Ger4bgaCpx9P93Q3XBWSH';
+
 interface Props {
   onSuccess: () => void;
 }
@@ -22,10 +25,37 @@ const STAGES = [
   { id: 'both', label: '🤝 Les deux' },
 ] as const;
 
-const inputCls =
-  'w-full rounded border border-white/10 bg-base-800 p-2 text-white';
+// Rôles possibles + poids (points de "travail apporté")
+const ROLE_OPTIONS: { id: string; label: string; weight: number }[] = [
+  { id: 'founder',   label: '👑 Founder',        weight: 15 },
+  { id: 'leaddev',   label: '💻 Lead Dev',        weight: 15 },
+  { id: 'dev',       label: '⌨️ Dev',             weight: 10 },
+  { id: 'design',    label: '🎨 Designer',        weight: 8 },
+  { id: 'marketing', label: '📣 Marketing',       weight: 8 },
+  { id: 'community', label: '💬 Community Mgr',   weight: 5 },
+  { id: 'bizdev',    label: '🤝 Biz Dev',         weight: 5 },
+];
+
+const inputCls = 'w-full rounded border border-white/10 bg-base-800 p-2 text-white';
 const labelCls = 'block text-xs font-semibold text-white';
 const hintCls = 'mt-1 block text-[11px] leading-snug text-ink-400';
+
+// Calcule la part créateur suggérée selon les rôles cumulés + type de recherche
+function suggestShare(roleIds: string[], stage: string): number {
+  const totalWeight = roleIds
+    .map((id) => ROLE_OPTIONS.find((r) => r.id === id)?.weight ?? 0)
+    .reduce((a, b) => a + b, 0);
+
+  // Base : poids des rôles, ramené à une échelle raisonnable
+  let suggested = Math.round(totalWeight * 0.8);
+
+  // Plafond selon ce que le projet cherche :
+  // - cherche des devs → ils doivent avoir une grosse part → cap 40%
+  // - cherche juste des investisseurs → cap 55% (l'argent ne "travaille" pas)
+  const cap = stage === 'invest' ? 55 : 40;
+  suggested = Math.min(Math.max(suggested, 10), cap);
+  return suggested;
+}
 
 export function CreatePactWizard({ onSuccess }: Props) {
   const { publicKey } = useWallet();
@@ -36,10 +66,10 @@ export function CreatePactWizard({ onSuccess }: Props) {
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [myRole, setMyRole] = useState('Founder');
-  const [myShare, setMyShare] = useState(50);
+  const [selectedRoles, setSelectedRoles] = useState<string[]>(['founder']);
+  const [myShare, setMyShare] = useState(30);
+  const [shareTouched, setShareTouched] = useState(false);
   const [stage, setStage] = useState<string>('both');
-  const [protocolWallet, setProtocolWallet] = useState('');
   const [members, setMembers] = useState<MemberDraft[]>([]);
 
   const [projectPda, setProjectPda] = useState<PublicKey | null>(null);
@@ -49,8 +79,35 @@ export function CreatePactWizard({ onSuccess }: Props) {
     return <p className="text-ink-300">Connectez votre wallet</p>;
   }
 
-  const totalShares = myShare + members.reduce((acc, m) => acc + (m.share || 0), 0);
-  const remainingForMembers = 100 - (myShare || 0);
+  const suggested = suggestShare(selectedRoles, stage);
+  const effectiveShare = shareTouched ? myShare : suggested;
+  const totalShares = effectiveShare + members.reduce((acc, m) => acc + (m.share || 0), 0);
+  const remainingForMembers = 100 - effectiveShare;
+  const cap = stage === 'invest' ? 55 : 40;
+  const isGreedy = effectiveShare > cap;
+  const myRoleLabel = selectedRoles
+    .map((id) => ROLE_OPTIONS.find((r) => r.id === id)?.label ?? id)
+    .join(' / ');
+
+  const toggleRole = (id: string) => {
+    setSelectedRoles((prev) =>
+      prev.includes(id)
+        ? prev.filter((r) => r !== id)
+        : [...prev, id]
+    );
+    // Recalcule la suggestion si l'user n'a pas modifié manuellement
+    if (!shareTouched) {
+      const next = selectedRoles.includes(id)
+        ? selectedRoles.filter((r) => r !== id)
+        : [...selectedRoles, id];
+      setMyShare(suggestShare(next, stage));
+    }
+  };
+
+  const handleStage = (id: string) => {
+    setStage(id);
+    if (!shareTouched) setMyShare(suggestShare(selectedRoles, id));
+  };
 
   const handleCreate = async () => {
     setLoading(true);
@@ -59,7 +116,7 @@ export function CreatePactWizard({ onSuccess }: Props) {
       const stageLabel = STAGES.find((s) => s.id === stage)?.label ?? stage;
       const id = 'pact-' + Date.now();
       const fullDescription = '[' + stageLabel + '] ' + description;
-      const creatorShareBps = myShare * 100;
+      const creatorShareBps = effectiveShare * 100;
 
       const { projectPda: pda } = await createProject(
         program,
@@ -67,9 +124,9 @@ export function CreatePactWizard({ onSuccess }: Props) {
         id,
         title,
         fullDescription,
-        myRole,
+        myRoleLabel || 'Founder',
         creatorShareBps,
-        new PublicKey(protocolWallet)
+        new PublicKey(PLATFORM_WALLET)
       );
 
       setProjectId(id);
@@ -176,15 +233,15 @@ export function CreatePactWizard({ onSuccess }: Props) {
           <div>
             <label className={labelCls}>Le projet cherche :</label>
             <small className={hintCls}>
-              Indique le profil de membres que tu veux attirer. Informatif uniquement,
-              ça ne bloque rien techniquement.
+              Ce choix influence la part créateur maximum recommandée (les devs qui
+              construisent méritent une vraie part).
             </small>
             <div className="mt-1 flex gap-2">
               {STAGES.map((s) => (
                 <button
                   key={s.id}
                   type="button"
-                  onClick={() => setStage(s.id)}
+                  onClick={() => handleStage(s.id)}
                   className={
                     'flex-1 rounded-lg border px-2 py-2 text-xs transition-colors ' +
                     (stage === s.id
@@ -198,69 +255,107 @@ export function CreatePactWizard({ onSuccess }: Props) {
             </div>
           </div>
 
-          {/* TON RÔLE */}
+          {/* TES RÔLES (multi-sélection) */}
           <div>
-            <label className={labelCls}>Ton rôle dans le projet</label>
-            <input
-              className={inputCls}
-              placeholder='Ex : "Founder / Game Designer"'
-              value={myRole}
-              onChange={(e) => setMyRole(e.target.value)}
-            />
+            <label className={labelCls}>Tes rôles dans le projet</label>
             <small className={hintCls}>
-              Exemples : "Lead Dev", "Founder", "Artiste 3D". Affiché à côté de ta part.
+              Sélectionne <strong>tous</strong> les rôles que tu assumes. Chaque rôle
+              ajouté augmente ta part suggérée (tu travailles plus).
             </small>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {ROLE_OPTIONS.map((r) => (
+                <button
+                  key={r.id}
+                  type="button"
+                  onClick={() => toggleRole(r.id)}
+                  className={
+                    'rounded-full border px-3 py-1 text-xs transition-colors ' +
+                    (selectedRoles.includes(r.id)
+                      ? 'border-accent-violet/60 bg-violet-500/20 text-white'
+                      : 'border-white/10 text-ink-300 hover:text-white')
+                  }
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
+            {selectedRoles.length === 0 && (
+              <small className="mt-1 block text-[11px] text-red-400">
+                Sélectionne au moins un rôle.
+              </small>
+            )}
           </div>
 
-          {/* TA PART */}
+          {/* TA PART — avec suggestion */}
           <div>
             <label className={labelCls}>Ta part (%) — créateur</label>
-            <input
-              type="number"
-              min={0}
-              max={100}
-              className={inputCls}
-              value={myShare}
-              onChange={(e) => setMyShare(Number(e.target.value))}
-            />
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={0}
+                max={100}
+                className={inputCls}
+                value={effectiveShare}
+                onChange={(e) => {
+                  setShareTouched(true);
+                  setMyShare(Number(e.target.value));
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => { setShareTouched(false); setMyShare(suggested); }}
+                className="whitespace-nowrap rounded border border-accent-violet/40 bg-violet-500/10 px-3 py-2 text-xs text-accent-violet hover:bg-violet-500/20"
+              >
+                ✨ Suggéré : {suggested} %
+              </button>
+            </div>
+
             <div className="mt-2 rounded-lg border border-accent-violet/25 bg-violet-500/10 p-3 text-[11px] leading-snug text-ink-300">
-              💡 <strong className="text-white">Comment ça marche :</strong> la somme de
-              ta part + les parts des membres (étape 2) doit faire{' '}
+              💡 <strong className="text-white">Part suggérée : {suggested} %</strong>{' '}
+              calculée selon tes {selectedRoles.length} rôle(s) et ce que le projet
+              cherche. La somme de ta part + les membres (étape 2) doit faire{' '}
               <strong className="text-white">exactement 100 %</strong>.
-              <br />
-              Exemple : toi 30 % + dev 40 % + investisseur 30 % = 100 % ✅
               <br />
               À l'étape suivante, il te restera{' '}
               <strong className="text-white">{remainingForMembers} %</strong> à répartir.
             </div>
+
+            {isGreedy && (
+              <div className="mt-2 rounded-lg border border-amber-400/40 bg-amber-500/10 p-3 text-[11px] leading-snug text-amber-300">
+                ⚠️ <strong>Part élevée ({effectiveShare} %).</strong> Au-delà de {cap} %
+                alors que tu cherches des {stage === 'invest' ? 'investisseurs' : 'devs'},
+                peu de gens rejoindront ton pact. Recommandé : {suggested} %.
+              </div>
+            )}
+
             <div className="mt-2 rounded-lg border border-emerald-400/25 bg-emerald-500/10 p-3 text-[11px] leading-snug text-emerald-300">
               🧮 <strong>Simulation :</strong> si le vault reçoit 10 SOL, tu toucheras{' '}
-              <strong>{((myShare || 0) / 10).toFixed(2)} SOL</strong> à chaque
+              <strong>{(effectiveShare / 10).toFixed(2)} SOL</strong> à chaque
               distribution (moins les frais plateforme).
             </div>
           </div>
 
-          {/* WALLET PROTOCOLE */}
+          {/* WALLET PROTOCOLE — FIXE */}
           <div>
             <label className={labelCls}>Wallet des frais plateforme</label>
-            <input
-              className={inputCls}
-              placeholder="Adresse Solana du wallet protocole"
-              value={protocolWallet}
-              onChange={(e) => setProtocolWallet(e.target.value)}
-            />
+            <div className="flex items-center gap-2 rounded border border-white/10 bg-base-900/60 p-2">
+              <span className="flex-1 truncate font-mono text-[11px] text-ink-400">
+                {PLATFORM_WALLET}
+              </span>
+              <span className="rounded bg-white/5 px-2 py-0.5 text-[10px] text-ink-400">
+                🔒 Fixe
+              </span>
+            </div>
             <small className={hintCls}>
-              ⚠️ Ce wallet appartient à la <strong>plateforme BuildPact</strong>, pas au
-              créateur du projet. Le programme lui envoie automatiquement les frais
-              protocol à chaque distribution. Ne le change que si tu sais ce que tu fais
-              (devnet uniquement).
+              Frais protocol BuildPact — prélevés automatiquement par le programme à
+              chaque distribution. Non modifiable.
             </small>
           </div>
 
           <button
             type="button"
             onClick={handleCreate}
-            disabled={loading || !title || !protocolWallet}
+            disabled={loading || !title || selectedRoles.length === 0}
             className="w-full rounded bg-accent-neon py-2 font-bold text-ink-900 disabled:opacity-50"
           >
             {loading ? 'Création...' : 'Créer le projet on-chain'}
@@ -278,7 +373,7 @@ export function CreatePactWizard({ onSuccess }: Props) {
           </p>
 
           <div className="rounded-lg border border-accent-violet/25 bg-violet-500/10 p-3 text-[11px] text-ink-300">
-            💡 Ta part créateur : <strong className="text-white">{myShare} %</strong> —
+            💡 Ta part créateur : <strong className="text-white">{effectiveShare} %</strong> —
             il reste <strong className="text-white">{remainingForMembers} %</strong> à
             répartir entre les membres. Le total doit faire exactement 100 %.
           </div>
@@ -327,7 +422,9 @@ export function CreatePactWizard({ onSuccess }: Props) {
             }
           >
             Total des parts : {totalShares} %{' '}
-            {totalShares === 100 ? '✓' : `(il ${totalShares < 100 ? 'manque' : 'y a'} ${Math.abs(100 - totalShares)} % — doit être 100 %)`}
+            {totalShares === 100
+              ? '✓'
+              : `(il ${totalShares < 100 ? 'manque' : 'y a'} ${Math.abs(100 - totalShares)} % — doit être 100 %)`}
           </p>
 
           <button
