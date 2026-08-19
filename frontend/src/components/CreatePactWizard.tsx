@@ -7,6 +7,7 @@ import { useAnchorProgram } from '../hooks/useProjects';
 import { parseTxError } from '../lib/pacts';
 
 // ═══ Wallet plateforme BuildPact — FIXE, non modifiable ═══
+// Pour le changer : modifie cette constante + commit + redeploy.
 const PLATFORM_WALLET = 'AVhVM29hD6YRLb2DujhKfF8Ger4bgaCpx9P93Q3XBWSH';
 
 interface Props {
@@ -25,36 +26,77 @@ const STAGES = [
   { id: 'both', label: '🤝 Les deux' },
 ] as const;
 
-// Rôles possibles + poids (points de "travail apporté")
-const ROLE_OPTIONS: { id: string; label: string; weight: number }[] = [
-  { id: 'founder',   label: '👑 Founder',        weight: 15 },
-  { id: 'leaddev',   label: '💻 Lead Dev',        weight: 15 },
-  { id: 'dev',       label: '⌨️ Dev',             weight: 10 },
-  { id: 'design',    label: '🎨 Designer',        weight: 8 },
-  { id: 'marketing', label: '📣 Marketing',       weight: 8 },
-  { id: 'community', label: '💬 Community Mgr',   weight: 5 },
-  { id: 'bizdev',    label: '🤝 Biz Dev',         weight: 5 },
+// Vrais rôles Web3 / Web2, groupés par catégorie
+const ROLE_GROUPS: {
+  category: string;
+  roles: { id: string; label: string; weight: number }[];
+}[] = [
+  {
+    category: 'Direction',
+    roles: [
+      { id: 'founder',    label: '👑 Founder',           weight: 15 },
+      { id: 'cofounder',  label: '🤝 Co-Founder',        weight: 12 },
+      { id: 'pm',         label: '📋 Product Manager',   weight: 10 },
+    ],
+  },
+  {
+    category: 'Tech',
+    roles: [
+      { id: 'leaddev',    label: '💻 Lead Dev',          weight: 15 },
+      { id: 'rustdev',    label: '🦀 Rust / Anchor Dev', weight: 15 },
+      { id: 'frontend',   label: '🖥️ Frontend Dev',      weight: 10 },
+      { id: 'backend',    label: '⚙️ Backend Dev',       weight: 10 },
+      { id: 'fullstack',  label: '🔧 Fullstack Dev',     weight: 12 },
+      { id: 'mobile',     label: '📱 Mobile Dev',        weight: 10 },
+      { id: 'gamedev',    label: '🎮 Game Dev',          weight: 10 },
+      { id: 'devops',     label: '🛠️ DevOps',            weight: 8 },
+      { id: 'security',   label: '🔐 Security Auditor',  weight: 12 },
+    ],
+  },
+  {
+    category: 'Design & Créatif',
+    roles: [
+      { id: 'uxui',       label: '🎨 UX/UI Designer',    weight: 10 },
+      { id: 'artist',     label: '🖌️ Artist / 3D',       weight: 8 },
+      { id: 'motion',     label: '🎬 Motion Designer',   weight: 6 },
+    ],
+  },
+  {
+    category: 'Business & Growth',
+    roles: [
+      { id: 'tokenomics', label: '📊 Tokenomics Expert', weight: 10 },
+      { id: 'marketing',  label: '📣 Marketing',         weight: 8 },
+      { id: 'community',  label: '💬 Community Mgr',     weight: 5 },
+      { id: 'growth',     label: '📈 Growth / BD',       weight: 8 },
+      { id: 'content',    label: '✍️ Content Writer',    weight: 5 },
+      { id: 'legal',      label: '⚖️ Legal Advisor',     weight: 6 },
+    ],
+  },
+  {
+    category: 'Capital',
+    roles: [
+      { id: 'investor',   label: '💰 Investisseur',      weight: 0 },
+      { id: 'advisor',    label: '🧭 Advisor',           weight: 3 },
+    ],
+  },
 ];
+
+const ALL_ROLES = ROLE_GROUPS.flatMap((g) => g.roles);
 
 const inputCls = 'w-full rounded border border-white/10 bg-base-800 p-2 text-white';
 const labelCls = 'block text-xs font-semibold text-white';
 const hintCls = 'mt-1 block text-[11px] leading-snug text-ink-400';
 
 // Calcule la part créateur suggérée selon les rôles cumulés + type de recherche
-function suggestShare(roleIds: string[], stage: string): number {
-  const totalWeight = roleIds
-    .map((id) => ROLE_OPTIONS.find((r) => r.id === id)?.weight ?? 0)
+function suggestShare(roleIds: string[], customCount: number, stage: string): number {
+  const baseWeight = roleIds
+    .map((id) => ALL_ROLES.find((r) => r.id === id)?.weight ?? 0)
     .reduce((a, b) => a + b, 0);
+  const totalWeight = baseWeight + customCount * 5;
 
-  // Base : poids des rôles, ramené à une échelle raisonnable
   let suggested = Math.round(totalWeight * 0.8);
-
-  // Plafond selon ce que le projet cherche :
-  // - cherche des devs → ils doivent avoir une grosse part → cap 40%
-  // - cherche juste des investisseurs → cap 55% (l'argent ne "travaille" pas)
   const cap = stage === 'invest' ? 55 : 40;
-  suggested = Math.min(Math.max(suggested, 10), cap);
-  return suggested;
+  return Math.min(Math.max(suggested, 10), cap);
 }
 
 export function CreatePactWizard({ onSuccess }: Props) {
@@ -67,9 +109,12 @@ export function CreatePactWizard({ onSuccess }: Props) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [selectedRoles, setSelectedRoles] = useState<string[]>(['founder']);
+  const [customRole, setCustomRole] = useState('');
+  const [customRoles, setCustomRoles] = useState<string[]>([]);
   const [myShare, setMyShare] = useState(30);
   const [shareTouched, setShareTouched] = useState(false);
   const [stage, setStage] = useState<string>('both');
+  const [seedAmount, setSeedAmount] = useState<string>(''); // invest founder (informatif)
   const [members, setMembers] = useState<MemberDraft[]>([]);
 
   const [projectPda, setProjectPda] = useState<PublicKey | null>(null);
@@ -79,34 +124,44 @@ export function CreatePactWizard({ onSuccess }: Props) {
     return <p className="text-ink-300">Connectez votre wallet</p>;
   }
 
-  const suggested = suggestShare(selectedRoles, stage);
+  const suggested = suggestShare(selectedRoles, customRoles.length, stage);
   const effectiveShare = shareTouched ? myShare : suggested;
   const totalShares = effectiveShare + members.reduce((acc, m) => acc + (m.share || 0), 0);
   const remainingForMembers = 100 - effectiveShare;
   const cap = stage === 'invest' ? 55 : 40;
   const isGreedy = effectiveShare > cap;
-  const myRoleLabel = selectedRoles
-    .map((id) => ROLE_OPTIONS.find((r) => r.id === id)?.label ?? id)
-    .join(' / ');
+  const myRoleLabel = [
+    ...selectedRoles.map((id) => ALL_ROLES.find((r) => r.id === id)?.label ?? id),
+    ...customRoles,
+  ].join(' / ');
 
   const toggleRole = (id: string) => {
-    setSelectedRoles((prev) =>
-      prev.includes(id)
-        ? prev.filter((r) => r !== id)
-        : [...prev, id]
-    );
-    // Recalcule la suggestion si l'user n'a pas modifié manuellement
-    if (!shareTouched) {
-      const next = selectedRoles.includes(id)
-        ? selectedRoles.filter((r) => r !== id)
-        : [...selectedRoles, id];
-      setMyShare(suggestShare(next, stage));
+    const next = selectedRoles.includes(id)
+      ? selectedRoles.filter((r) => r !== id)
+      : [...selectedRoles, id];
+    setSelectedRoles(next);
+    if (!shareTouched) setMyShare(suggestShare(next, customRoles.length, stage));
+  };
+
+  const addCustomRole = () => {
+    const v = customRole.trim();
+    if (v && !customRoles.includes(v)) {
+      const next = [...customRoles, v];
+      setCustomRoles(next);
+      setCustomRole('');
+      if (!shareTouched) setMyShare(suggestShare(selectedRoles, next.length, stage));
     }
+  };
+
+  const removeCustomRole = (r: string) => {
+    const next = customRoles.filter((c) => c !== r);
+    setCustomRoles(next);
+    if (!shareTouched) setMyShare(suggestShare(selectedRoles, next.length, stage));
   };
 
   const handleStage = (id: string) => {
     setStage(id);
-    if (!shareTouched) setMyShare(suggestShare(selectedRoles, id));
+    if (!shareTouched) setMyShare(suggestShare(selectedRoles, customRoles.length, id));
   };
 
   const handleCreate = async () => {
@@ -115,7 +170,15 @@ export function CreatePactWizard({ onSuccess }: Props) {
     try {
       const stageLabel = STAGES.find((s) => s.id === stage)?.label ?? stage;
       const id = 'pact-' + Date.now();
-      const fullDescription = '[' + stageLabel + '] ' + description;
+
+      // Investissement fondateur → informatif dans la description
+      // (le programme actuel n'a pas d'instruction de dépôt initial)
+      const seedInfo =
+        seedAmount && Number(seedAmount) > 0
+          ? ` | 💰 Seed founder : ${seedAmount} SOL (engagement annoncé)`
+          : '';
+      const fullDescription = '[' + stageLabel + '] ' + description + seedInfo;
+
       const creatorShareBps = effectiveShare * 100;
 
       const { projectPda: pda } = await createProject(
@@ -255,31 +318,95 @@ export function CreatePactWizard({ onSuccess }: Props) {
             </div>
           </div>
 
-          {/* TES RÔLES (multi-sélection) */}
+          {/* SEED FOUNDER (informatif) */}
+          <div>
+            <label className={labelCls}>Ton investissement initial (optionnel)</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                className={inputCls}
+                placeholder="0"
+                value={seedAmount}
+                onChange={(e) => setSeedAmount(e.target.value)}
+              />
+              <span className="whitespace-nowrap text-xs text-ink-400">SOL</span>
+            </div>
+            <small className={hintCls}>
+              💡 Le contrat actuel ne stocke pas de dépôt initial — cette somme sera
+              affichée dans la description comme <strong>engagement annoncé</strong>.
+              Tu pourras ensuite l'envoyer réellement via le bouton "Fund" du pact.
+              Une fonction de dépôt natif viendra dans une v2 du programme.
+            </small>
+          </div>
+
+          {/* TES RÔLES (multi-sélection, groupés) */}
           <div>
             <label className={labelCls}>Tes rôles dans le projet</label>
             <small className={hintCls}>
-              Sélectionne <strong>tous</strong> les rôles que tu assumes. Chaque rôle
-              ajouté augmente ta part suggérée (tu travailles plus).
+              Sélectionne <strong>tous</strong> les rôles que tu assumes réellement.
+              Chaque rôle augmente ta part suggérée (tu travailles plus).
             </small>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {ROLE_OPTIONS.map((r) => (
-                <button
-                  key={r.id}
-                  type="button"
-                  onClick={() => toggleRole(r.id)}
-                  className={
-                    'rounded-full border px-3 py-1 text-xs transition-colors ' +
-                    (selectedRoles.includes(r.id)
-                      ? 'border-accent-violet/60 bg-violet-500/20 text-white'
-                      : 'border-white/10 text-ink-300 hover:text-white')
-                  }
-                >
-                  {r.label}
-                </button>
-              ))}
+
+            {ROLE_GROUPS.map((group) => (
+              <div key={group.category} className="mt-2">
+                <p className="mb-1 text-[10px] uppercase tracking-wider text-ink-400">
+                  {group.category}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {group.roles.map((r) => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => toggleRole(r.id)}
+                      className={
+                        'rounded-full border px-3 py-1 text-xs transition-colors ' +
+                        (selectedRoles.includes(r.id)
+                          ? 'border-accent-violet/60 bg-violet-500/20 text-white'
+                          : 'border-white/10 text-ink-300 hover:text-white')
+                      }
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+
+            {/* Rôle custom */}
+            <div className="mt-3 flex gap-2">
+              <input
+                className={inputCls}
+                placeholder='Autre rôle (ex : "Music Producer")'
+                value={customRole}
+                onChange={(e) => setCustomRole(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomRole(); } }}
+              />
+              <button
+                type="button"
+                onClick={addCustomRole}
+                className="whitespace-nowrap rounded border border-accent-violet/40 bg-violet-500/10 px-3 text-xs text-accent-violet hover:bg-violet-500/20"
+              >
+                + Ajouter
+              </button>
             </div>
-            {selectedRoles.length === 0 && (
+            {customRoles.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {customRoles.map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => removeCustomRole(r)}
+                    className="rounded-full border border-accent-neon/50 bg-emerald-500/15 px-3 py-1 text-xs text-white"
+                  >
+                    {r} ✕
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {selectedRoles.length === 0 && customRoles.length === 0 && (
               <small className="mt-1 block text-[11px] text-red-400">
                 Sélectionne au moins un rôle.
               </small>
@@ -312,9 +439,9 @@ export function CreatePactWizard({ onSuccess }: Props) {
 
             <div className="mt-2 rounded-lg border border-accent-violet/25 bg-violet-500/10 p-3 text-[11px] leading-snug text-ink-300">
               💡 <strong className="text-white">Part suggérée : {suggested} %</strong>{' '}
-              calculée selon tes {selectedRoles.length} rôle(s) et ce que le projet
-              cherche. La somme de ta part + les membres (étape 2) doit faire{' '}
-              <strong className="text-white">exactement 100 %</strong>.
+              calculée selon tes {selectedRoles.length + customRoles.length} rôle(s) et ce
+              que le projet cherche. La somme de ta part + les membres (étape 2) doit
+              faire <strong className="text-white">exactement 100 %</strong>.
               <br />
               À l'étape suivante, il te restera{' '}
               <strong className="text-white">{remainingForMembers} %</strong> à répartir.
@@ -348,14 +475,14 @@ export function CreatePactWizard({ onSuccess }: Props) {
             </div>
             <small className={hintCls}>
               Frais protocol BuildPact — prélevés automatiquement par le programme à
-              chaque distribution. Non modifiable.
+              chaque distribution. Non modifiable par les utilisateurs.
             </small>
           </div>
 
           <button
             type="button"
             onClick={handleCreate}
-            disabled={loading || !title || selectedRoles.length === 0}
+            disabled={loading || !title || (selectedRoles.length === 0 && customRoles.length === 0)}
             className="w-full rounded bg-accent-neon py-2 font-bold text-ink-900 disabled:opacity-50"
           >
             {loading ? 'Création...' : 'Créer le projet on-chain'}
@@ -414,6 +541,15 @@ export function CreatePactWizard({ onSuccess }: Props) {
           >
             + Ajouter un membre
           </button>
+
+          {members.length >= 8 && (
+            <div className="rounded-lg border border-amber-400/40 bg-amber-500/10 p-3 text-[11px] text-amber-300">
+              ⚠️ <strong>Limite technique :</strong> le programme actuel stocke les
+              membres dans un seul compte on-chain. Au-delà de ~8-10 membres, le compte
+              peut dépasser sa taille max. Pour les gros pacts (10+ membres), une
+              évolution du smart contract sera nécessaire (comptes membres séparés).
+            </div>
+          )}
 
           <p
             className={
