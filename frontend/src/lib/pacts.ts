@@ -45,3 +45,16 @@ export function parseTxError(err: unknown): string {
   if (msg.includes('insufficient funds')) return 'SOL insuffisant pour les frais de transaction.';
   return msg.length > 140 ? msg.slice(0, 140) + '…' : msg;
 }
+export function formatSol(amount: number | undefined | null): string {
+  if (amount == null || isNaN(amount)) return '0';
+  return amount.toFixed(3);
+}
+
+export function formatAddress(address: string | undefined | null): string {
+  if (!address) return '';
+  return address.slice(0, 4) + '...' + address.slice(-4);
+}
+
+export function getVaultBalance(pact: any): number {
+  return pact?.vaultBalanceSol ?? 0;
+}
