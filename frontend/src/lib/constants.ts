@@ -2,9 +2,12 @@ import { PublicKey } from '@solana/web3.js';
 
 export const PROGRAM_ID = new PublicKey('266V7Jct9EVWPeHscDwBpL13251EMUyak7WR9QiT59kQ');
 
-// ═══ RPC avec fallback — Helius (env) → Ankr → Solana officiel ═══
+// ═══ RPC avec fallback — Helius (dédié) → Ankr → Solana officiel ═══
+// Helius = node unique, pas de load balancer → fix "Blockhash not found"
+const HELIUS_RPC = 'https://devnet.helius-rpc.com/?api-key=fc3853b9-07dd-4f31-9ba3-af7d0ddf8ecc';
+
 export const RPC_ENDPOINTS: string[] = [
-  import.meta.env.VITE_RPC_ENDPOINT as string,
+  (import.meta.env.VITE_RPC_ENDPOINT as string) || HELIUS_RPC,
   'https://rpc.ankr.com/solana_devnet',
   'https://api.devnet.solana.com',
 ].filter(Boolean) as string[];
