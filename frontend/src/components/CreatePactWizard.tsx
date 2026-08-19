@@ -98,7 +98,33 @@ function suggestShare(roleIds: string[], customCount: number, stage: string): nu
   const cap = stage === 'invest' ? 55 : 40;
   return Math.min(Math.max(suggested, 10), cap);
 }
+// Raccourcit un label rôle pour tenir dans MAX_ROLE_LEN (24 BYTES on-chain)
+function roleShortLabel(id: string): string {
+  const SHORT: Record<string, string> = {
+    founder: 'Founder', cofounder: 'CoFounder', pm: 'PM',
+    leaddev: 'Lead Dev', rustdev: 'Rust Dev', frontend: 'Frontend',
+    backend: 'Backend', fullstack: 'Fullstack', mobile: 'Mobile',
+    gamedev: 'Game Dev', devops: 'DevOps', security: 'Security',
+    uxui: 'UX/UI', artist: 'Artist', motion: 'Motion',
+    tokenomics: 'Tokenomics', marketing: 'Marketing', community: 'Community',
+    growth: 'Growth', content: 'Content', legal: 'Legal',
+    investor: 'Investor', advisor: 'Advisor',
+  };
+  return SHORT[id] ?? id.slice(0, 24);
+}
 
+// project_id safe : ≤ 20 bytes, minuscules, sans accents
+function slugId(name: string): string {
+  const slug = name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 12) || 'pact';
+  return `${slug}-${Date.now().toString(36).slice(-6)}`; // ex: "seeekr-mobile-abc123"
+}
 export function CreatePactWizard({ onSuccess }: Props) {
   const { publicKey } = useWallet();
   const program = useAnchorProgram();
@@ -165,42 +191,50 @@ export function CreatePactWizard({ onSuccess }: Props) {
   };
 
   const handleCreate = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const stageLabel = STAGES.find((s) => s.id === stage)?.label ?? stage;
-      const id = 'pact-' + Date.now();
+  setLoading(true);
+  setError(null);
+  try {
+    const stageLabel = STAGES.find((s) => s.id === stage)?.label ?? stage;
+    const id = slugId(title); // ✅ ≤ 20 bytes garanti
 
-      // Investissement fondateur → informatif dans la description
-      // (le programme actuel n'a pas d'instruction de dépôt initial)
-      const seedInfo =
-        seedAmount && Number(seedAmount) > 0
-          ? ` | 💰 Seed founder : ${seedAmount} SOL (engagement annoncé)`
-          : '';
-      const fullDescription = '[' + stageLabel + '] ' + description + seedInfo;
+    const seedInfo =
+      seedAmount && Number(seedAmount) > 0
+        ? ` | 💰 Seed founder : ${seedAmount} SOL (engagement annoncé)`
+        : '';
+    const fullDescription = (
+      '[' + stageLabel + '] ' +
+      description +
+      ' | Rôles créateur : ' + myRoleLabel + // ✅ la liste COMPLÈTE part ici (280 max)
+      seedInfo
+    ).slice(0, 280);
 
-      const creatorShareBps = effectiveShare * 100;
+    // ✅ UN SEUL rôle, court, ≤ 24 bytes pour le programme
+    const creatorRoleOnChain = selectedRoles.length > 0
+      ? roleShortLabel(selectedRoles[0])
+      : (customRoles[0]?.slice(0, 24) ?? 'Founder');
 
-      const { projectPda: pda } = await createProject(
-        program,
-        publicKey,
-        id,
-        title,
-        fullDescription,
-        myRoleLabel || 'Founder',
-        creatorShareBps,
-        new PublicKey(PLATFORM_WALLET)
-      );
+    const creatorShareBps = effectiveShare * 100;
 
-      setProjectId(id);
-      setProjectPda(pda);
-      setStep(2);
-    } catch (e) {
-      setError(parseTxError(e));
-    } finally {
-      setLoading(false);
-    }
-  };
+    const { projectPda: pda } = await createProject(
+      program,
+      publicKey,
+      id,
+      title.slice(0, 40),          // ✅ sécurité
+      fullDescription,
+      creatorRoleOnChain,
+      creatorShareBps,
+      new PublicKey(PLATFORM_WALLET)
+    );
+
+    setProjectId(id);
+    setProjectPda(pda);
+    setStep(2);
+  } catch (e) {
+    setError(parseTxError(e));
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleAddMember = async () => {
     if (!projectPda) return;
@@ -210,13 +244,13 @@ export function CreatePactWizard({ onSuccess }: Props) {
       const validMembers = members.filter((m) => m.wallet.trim() !== '');
       for (const m of validMembers) {
         await addMember(
-          program,
-          publicKey,
-          projectPda,
-          new PublicKey(m.wallet),
-          m.role,
-          m.share * 100
-        );
+  program,
+  publicKey,
+  projectPda,
+  new PublicKey(m.wallet),
+  m.role.slice(0, 24),   // ✅ un rôle membre > 24 bytes = même crash 6005
+  m.share * 100
+);
       }
       setStep(3);
     } catch (e) {
