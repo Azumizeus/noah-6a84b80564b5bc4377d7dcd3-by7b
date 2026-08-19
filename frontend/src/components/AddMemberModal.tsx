@@ -4,7 +4,7 @@ import { PublicKey } from '@solana/web3.js';
 import { addMember } from '../lib/anchor';
 import { useAnchorProgram } from '../hooks/useProjects';
 import { parseTxError } from '../lib/pacts';
-import { PROJECT_ROLES } from '../lib/roles';
+import { ROLE_GROUPS, ALL_ROLES, roleShortLabel } from '../lib/roles';
 
 interface Props {
   projectPda: PublicKey;
@@ -17,10 +17,17 @@ export default function AddMemberModal({ projectPda, projectTitle, onClose, onSu
   const { publicKey } = useWallet();
   const program = useAnchorProgram();
   const [wallet, setWallet] = useState('');
-  const [role, setRole] = useState('Member');
+  const [roleId, setRoleId] = useState('');
   const [share, setShare] = useState('20');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const handleRoleChange = (id: string) => {
+    setRoleId(id);
+    // Pré-remplit la part avec le poids du rôle (si > 0)
+    const def = ALL_ROLES.find(r => r.id === id);
+    if (def && def.weight > 0) setShare(String(def.weight));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,6 +37,8 @@ export default function AddMemberModal({ projectPda, projectTitle, onClose, onSu
     setError(null);
 
     try {
+      if (!roleId) throw new Error('Choisis un rôle.');
+
       const memberWallet = new PublicKey(wallet.trim());
       const shareBps = Math.round(parseFloat(share) * 100);
 
@@ -37,7 +46,8 @@ export default function AddMemberModal({ projectPda, projectTitle, onClose, onSu
         throw new Error('Le share doit etre entre 0.01% et 100%');
       }
 
-      await addMember(program, publicKey, projectPda, memberWallet, role.slice(0, 24), shareBps);
+      // roleShortLabel : label court, sans emoji, ≤ 24 bytes (contrainte on-chain)
+      await addMember(program, publicKey, projectPda, memberWallet, roleShortLabel(roleId), shareBps);
 
       onSuccess();
       onClose();
@@ -74,17 +84,22 @@ export default function AddMemberModal({ projectPda, projectTitle, onClose, onSu
           </div>
 
           <div>
-            <label className="block text-sm text-gray-300 mb-1">Role</label>
+            <label className="block text-sm text-gray-300 mb-1">Rôle</label>
             <select
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
+              value={roleId}
+              onChange={(e) => handleRoleChange(e.target.value)}
               className="w-full bg-black/50 border border-purple-500/30 rounded-lg px-3 py-2 text-white text-sm focus:border-purple-500 focus:outline-none"
               required
             >
-              {PROJECT_ROLES.map((r) => (
-                <option key={r} value={r} className="bg-[#0d0d15]">
-                  {r}
-                </option>
+              <option value="" disabled>Choisir un rôle…</option>
+              {ROLE_GROUPS.map((g) => (
+                <optgroup key={g.category} label={g.category}>
+                  {g.roles.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.label} — {r.weight}%
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </div>
