@@ -770,6 +770,7 @@ export function CreatePactWizard({ onSuccess }: Props) {
         </div>
       )}
 
-      {error && <p className="mt-4 text-sm text-red-400">{error}</p>}
+       {error && <p className="mt-4 text-sm text-red-400">{error}</p>}
     </div>
-  )
+  );
+}
