@@ -1,6 +1,7 @@
 // src/components/DashboardLayout.tsx
 import { motion, MotionConfig, useReducedMotion, type Variants } from 'framer-motion';
 import type { ReactNode } from 'react';
+import { useHashRoute } from '../lib/router';
 
 interface NavLink {
   label: string;
