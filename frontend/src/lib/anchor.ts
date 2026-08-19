@@ -8,8 +8,7 @@ import {
   VersionedTransaction,
 } from '@solana/web3.js';
 import idl from '../idl/buildpact.json';
-import { PROGRAM_ID, PROJECT_SEED, VAULT_SEED, RPC_ENDPOINT } from './constants';
-
+import { PROGRAM_ID, PROJECT_SEED, VAULT_SEED, RPC_ENDPOINT, getRpcEndpoint, rotateRpc, isRateLimitError } from './constants';
 const MAX_RETRIES = 3;
 
 export function getProvider(wallet: any): AnchorProvider {
@@ -56,7 +55,6 @@ export function findVaultPda(project: PublicKey): [PublicKey, number] {
 // Fix "Blockhash not found" : on ne fait JAMAIS confiance au blockhash
 // interne d'Anchor, on en prend un neuf à chaque tentative.
 // ═══════════════════════════════════════════════════════════════════
-import { getRpcEndpoint, rotateRpc, isRateLimitError } from './constants';
 
 async function buildAndSend(
   program: Program,
@@ -117,20 +115,6 @@ async function buildAndSend(
         continue;
       }
 
-      const retryable =
-        msg.includes('Blockhash not found') ||
-        msg.includes('blockhash') ||
-        msg.includes('Transaction simulation failed') ||
-        msg.includes('Network request failed');
-
-      if (!retryable || attempt === MAX_RETRIES) throw e;
-
-      await new Promise((r) => setTimeout(r, 400 * attempt));
-    }
-  }
-
-  throw lastError;
-}
       // Blockhash expiré ou erreur réseau transitoire → retry
       const retryable =
         msg.includes('Blockhash not found') ||
