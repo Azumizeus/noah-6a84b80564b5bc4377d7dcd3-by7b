@@ -148,7 +148,8 @@ export function DashboardLayout({
               <p>© {new Date().getFullYear()} BuildPact Protocol · Devnet</p>
               <p className="font-mono">
                 Built on <span className="text-accent-violet">Solana</span> · Audited by{' '}
-                <span className="text-accent-neon">OtterSec</span>
+                      Built on <span className="text-accent-violet">Solana</span> ·{' '}
+      <span className="text-accent-gold">Unaudited — Devnet only</span>
               </p>
             </div>
           </footer>
