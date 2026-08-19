@@ -9,6 +9,19 @@ export default {
       colors: {
         base: '#030308',
         panel: 'rgba(18,18,38,0.55)',
+        // Échelle de gris pour les textes (indispensable !)
+        ink: {
+          50:  '#F8F8FC',
+          100: '#EDEDF5',
+          200: '#D4D4E3',
+          300: '#ABABC2',
+          400: '#82829E',
+          500: '#5D5D78',
+          600: '#44445C',
+          700: '#303044',
+          800: '#1E1E2E',
+          900: '#12121F',
+        },
         accent: {
           violet: '#9945FF',
           neon: '#14F195',
@@ -16,8 +29,8 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['Space Grotesk', 'sans-serif'],
-        mono: ['Space Mono', 'monospace'],
+        sans: ['Space Grotesk', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        mono: ['Space Mono', 'ui-monospace', 'monospace'],
       },
       animation: {
         float: 'float 6s ease-in-out infinite',
