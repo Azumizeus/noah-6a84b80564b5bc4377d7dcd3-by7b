@@ -1,10 +1,3 @@
-import type { PublicKey } from '@solana/web3.js';
+export type { ChainPact as Pact } from '../lib/pacts';
 
-export interface Pact {
-  pda: PublicKey;
-  status: string;
-  title?: string;
-  vaultBalanceSol?: number;
-  myClaimableSol?: number;
-  [key: string]: any;
-}
+export type PactAction = 'distribute' | 'fund' | 'finalize' | null;
