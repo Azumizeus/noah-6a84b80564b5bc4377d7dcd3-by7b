@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@solana-mobile/wallet-adapter-mobile": "^2.1.0",
     "@coral-xyz/anchor": "^0.30.1",
     "@solana/wallet-adapter-base": "^0.9.23",
     "@solana/wallet-adapter-react": "^0.15.35",
