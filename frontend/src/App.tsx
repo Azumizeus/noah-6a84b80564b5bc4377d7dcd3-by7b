@@ -1,13 +1,5 @@
-import { useMemo } from 'react';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
-import { PhantomWalletAdapter, SolflareWalletAdapter } from '@solana/wallet-adapter-wallets';
-import {
-  SolanaMobileWalletAdapter,
-  createDefaultAddressSelector,
-  createDefaultAuthorizationResultCache,
-  createDefaultWalletNotFoundHandler,
-} from '@solana-mobile/wallet-adapter-mobile';
 import { RPC_ENDPOINT } from './lib/constants';
 import { useHashRoute } from './lib/router';
 import DashboardPage from './pages/DashboardPage';
@@ -18,30 +10,12 @@ import DocsPage from './pages/DocsPage';
 import '@solana/wallet-adapter-react-ui/styles.css';
 
 export default function App() {
-  const wallets = useMemo(
-    () => [
-      // ⭐ MWA EN PREMIER — Seed Vault / Saga / Seeker (critère hackathon)
-      new SolanaMobileWalletAdapter({
-        addressSelector: createDefaultAddressSelector(),
-        appIdentity: {
-          name: 'BuildPact',
-          uri: 'https://buildpact-9y9o4gx0g-azumizeus-projects.vercel.app',
-          icon: 'favicon.ico',
-        },
-        authorizationResultCache: createDefaultAuthorizationResultCache(),
-        cluster: 'devnet',
-        onWalletNotFound: createDefaultWalletNotFoundHandler(),
-      }),
-      new PhantomWalletAdapter(),
-      new SolflareWalletAdapter(),
-    ],
-    []
-  );
   const route = useHashRoute();
 
   return (
     <ConnectionProvider endpoint={RPC_ENDPOINT}>
-      <WalletProvider wallets={wallets} autoConnect>
+      {/* Liste vide → Wallet Standard auto-détecte Phantom/Solflare/Seeker */}
+      <WalletProvider wallets={[]} autoConnect>
         <WalletModalProvider>
           {route === '/pacts' ? (
             <PactsPage />
