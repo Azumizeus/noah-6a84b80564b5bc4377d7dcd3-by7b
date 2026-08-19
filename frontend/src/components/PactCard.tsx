@@ -20,7 +20,7 @@ export default function PactCard({ pact, walletConnected, busyAction, onDistribu
   const statusColor = pact.status === 'active' ? 'text-emerald-400 border-emerald-400/30 bg-emerald-400/10' : 'text-amber-400 border-amber-400/30 bg-amber-400/10';
   const statusLabel = pact.status === 'active' ? 'Finalisé' : 'Ouvert';
 
-  const canFinalize = pact.memberCount >= 2;
+  const canFinalize = pact.members.length >= 2;
   const canDistribute = pact.vaultBalanceSol > 0;
 
   return (
@@ -51,13 +51,13 @@ export default function PactCard({ pact, walletConnected, busyAction, onDistribu
           </div>
           <div>
             <p className="text-xs text-ink-400">Members</p>
-            <p className="mt-0.5 font-mono text-sm text-white">{pact.memberCount} membre(s)</p>
+            <p className="mt-0.5 font-mono text-sm text-white">{pact.members.length} membre(s)</p>
           </div>
         </div>
 
         {walletConnected && (
           <div className="mt-6 space-y-3 border-t border-white/5 pt-4">
-            {!pact.finalized && (
+            {pact.status !== 'active' && (
               <div className="flex flex-col gap-2">
                 <button
                   onClick={() => setShowAddMember(true)}
@@ -67,12 +67,12 @@ export default function PactCard({ pact, walletConnected, busyAction, onDistribu
                   + Ajouter membre
                 </button>
                 <div className="text-xs text-ink-400">
-                  {pact.memberCount < 2 && '⚠️ Minimum 2 membres requis pour finaliser'}
+                  {pact.members.length < 2 && '⚠️ Minimum 2 membres requis pour finaliser'}
                 </div>
               </div>
             )}
 
-            {pact.finalized && (
+            {pact.status === 'active' && (
               <div className="flex gap-2">
                 <input
                   type="number"
@@ -88,20 +88,20 @@ export default function PactCard({ pact, walletConnected, busyAction, onDistribu
                   disabled={busyAction !== null}
                   className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
                 >
-                  {busyAction === 'Fund' ? 'Funding...' : 'Fund'}
+                  {busyAction === 'fund' ? 'Funding...' : 'fund'}
                 </button>
               </div>
             )}
 
             <div className="flex gap-2">
-              {!pact.finalized ? (
+              {pact.status !== 'active' ? (
                 <button
                   onClick={() => onFinalize(pact)}
                   disabled={busyAction !== null || !canFinalize}
                   className="flex-1 rounded-lg bg-accent-violet px-4 py-2 text-sm font-medium text-white transition hover:bg-accent-violet/90 disabled:opacity-50"
                   title={!canFinalize ? 'Ajoute au moins 2 membres' : ''}
                 >
-                  {busyAction === 'Finalize' ? 'Finalisation...' : '🔒 Finaliser'}
+                  {busyAction === 'finalize' ? 'Finalisation...' : '🔒 Finaliser'}
                 </button>
               ) : (
                 <button
@@ -109,7 +109,7 @@ export default function PactCard({ pact, walletConnected, busyAction, onDistribu
                   disabled={busyAction !== null || !canDistribute}
                   className="flex-1 rounded-lg bg-accent-neon px-4 py-2 text-sm font-bold text-ink-900 transition hover:opacity-90 disabled:opacity-50"
                 >
-                  {busyAction === 'Distribute' ? 'Distribution...' : `Distribute ${formatSol(pact.vaultBalanceSol)} SOL`}
+                  {busyAction === 'distribute' ? 'Distribution...' : `Distribute ${formatSol(pact.vaultBalanceSol)} SOL`}
                 </button>
               )}
             </div>
