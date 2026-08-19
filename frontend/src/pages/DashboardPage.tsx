@@ -11,7 +11,7 @@ import { useProjects, usePactActions } from '../hooks/useProjects';
 export function DashboardPage() {
   const { connected } = useWallet();
   const { pacts, loading, error, refresh } = useProjects();
-  const { busyId, busyAction, txState, runDistribute, runFund } = usePactActions(refresh);
+  const { busyId, busyAction, txState, runDistribute, runFund, runFinalize } = usePactActions(refresh);
 
   const totalVault = pacts.reduce((s, p) => s + p.vaultBalanceSol, 0);
   const myClaimable = pacts.reduce((s, p) => s + p.myClaimableSol, 0);
@@ -90,12 +90,13 @@ export function DashboardPage() {
           {preview.map((pact) => (
             <FadeInUp key={pact.pda.toBase58()}>
               <PactCard
-                pact={pact}
-                walletConnected={connected}
-                busyAction={busyId === pact.pda.toBase58() ? busyAction : null}
-                onDistribute={runDistribute}
-                onFund={runFund}
-              />
+  pact={pact}
+  walletConnected={connected}
+  busyAction={busyId === pact.pda.toBase58() ? busyAction : null}
+  onDistribute={runDistribute}
+  onFund={runFund}
+  onFinalize={runFinalize}
+/>
             </FadeInUp>
           ))}
         </section>
