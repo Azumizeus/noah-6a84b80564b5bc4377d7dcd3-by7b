@@ -9,6 +9,7 @@ import {
 } from '@solana/web3.js';
 import idl from '../idl/buildpact.json';
 import { PROGRAM_ID, PROJECT_SEED, VAULT_SEED, RPC_ENDPOINT, getRpcEndpoint, rotateRpc, isRateLimitError } from './constants';
+
 const MAX_RETRIES = 3;
 
 export function getProvider(wallet: any): AnchorProvider {
@@ -52,8 +53,12 @@ export function findVaultPda(project: PublicKey): [PublicKey, number] {
 
 // ═══════════════════════════════════════════════════════════════════
 // Helper central : envoie une transaction avec blockhash FRAIS + retry
-// Fix "Blockhash not found" : on ne fait JAMAIS confiance au blockhash
-// interne d'Anchor, on en prend un neuf à chaque tentative.
+// Fix "Blockhash not found" :
+//  - minContextSlot force le RPC à router vers un node qui connaît
+//    le blockhash (fix load-balancer devnet public)
+//  - skipPreflight à partir du 2e essai : la simulation est le maillon
+//    faible sur devnet, la tx elle-même est souvent valide
+//  - UNE SEULE connexion pour toute la fonction (pas de saut de node)
 // ═══════════════════════════════════════════════════════════════════
 
 async function buildAndSend(
@@ -67,16 +72,22 @@ async function buildAndSend(
     throw new Error('Wallet non connecté ou incapable de signer.');
   }
 
+  // UNE connexion stable pour toute la fonction
+  const connection = new Connection(getRpcEndpoint(), 'confirmed');
+
   let lastError: unknown = null;
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    // Connexion fraîche à chaque tentative (endpoint courant)
-    const connection = new Connection(getRpcEndpoint(), 'confirmed');
     try {
       const tx: Transaction = await txBuilder.transaction();
 
+      // Blockhash FRAIS à chaque tentative
       const { blockhash, lastValidBlockHeight } =
         await connection.getLatestBlockhash('confirmed');
+
+      // Slot de contexte : garantit que le node qui recevra la tx
+      // connaît ce blockhash (fix "Blockhash not found" load-balancer)
+      const minContextSlot = await connection.getSlot('confirmed');
 
       tx.recentBlockhash = blockhash;
       tx.feePayer = wallet.publicKey as PublicKey;
@@ -102,8 +113,11 @@ async function buildAndSend(
       const raw = signed.serialize();
 
       const sig = await connection.sendRawTransaction(raw, {
-        skipPreflight: false,
+        // 1er essai : simulation ON (sécurité)
+        // retries : simulation OFF (maillon faible sur devnet public)
+        skipPreflight: attempt >= 2,
         preflightCommitment: 'confirmed',
+        minContextSlot,
         maxRetries: 3,
       });
 
@@ -119,6 +133,11 @@ async function buildAndSend(
 
       // Annulation utilisateur → remontée directe, pas de retry
       if (msg.includes('User rejected') || e?.name === 'WalletSignTransactionError') {
+        throw e;
+      }
+
+      // Garde-fou mobile → erreur métier, pas de retry
+      if (msg.includes('n\'a pas signé la transaction')) {
         throw e;
       }
 
