@@ -270,6 +270,22 @@ export async function distribute(
   return buildAndSend(program, builder);
 }
 
+// ⬇️ NOUVEAU — supprime un pact NON finalisé (créateur uniquement, vault vide)
+export async function closeProject(
+  program: Program,
+  creator: PublicKey,
+  projectPda: PublicKey
+) {
+  const [vaultPda] = findVaultPda(projectPda);
+
+  const builder = program.methods
+    .closeProject()
+    .accounts({ project: projectPda, vault: vaultPda, creator });
+
+  return buildAndSend(program, builder);
+}
+// ⬆️ NOUVEAU
+
 export async function fetchProject(program: Program, projectPda: PublicKey) {
   return (program.account as any).project.fetch(projectPda);
 }
