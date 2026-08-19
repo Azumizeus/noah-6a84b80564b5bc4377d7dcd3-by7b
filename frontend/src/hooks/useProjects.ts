@@ -4,7 +4,7 @@ import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
 import { BN, type Program } from '@coral-xyz/anchor';
 import {
-  getProgram, getReadonlyProgram, findVaultPda,
+  getProgram, getProvider, getReadonlyProgram, findVaultPda,
   fetchAllProjects, distribute, fund,
 } from '../lib/anchor';
 import { parseTxError, type ChainPact } from '../lib/pacts';
