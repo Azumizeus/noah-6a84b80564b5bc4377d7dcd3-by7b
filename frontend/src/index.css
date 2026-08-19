@@ -16,7 +16,7 @@
   }
 
   body {
-    @apply bg-base text-ink-200 font-sans antialiased;
+    @apply bg-base text-ink-100 font-sans antialiased;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -71,7 +71,7 @@
   .glass-panel {
     @apply relative rounded-2xl border;
     border-color: rgba(153, 69, 255, 0.2);
-    background: linear-gradient(180deg, rgba(10, 10, 24, 0.72) 0%, rgba(5, 5, 16, 0.72) 100%);
+    background: linear-gradient(180deg, rgba(28, 28, 48, 0.72) 0%, rgba(16, 16, 30, 0.72) 100%);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     box-shadow:
