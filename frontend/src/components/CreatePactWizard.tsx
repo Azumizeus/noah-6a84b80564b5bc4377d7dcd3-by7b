@@ -1,5 +1,5 @@
 // src/components/CreatePactWizard.tsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { PublicKey } from '@solana/web3.js';
 import { createProject, addMember, approve, finalize } from '../lib/anchor';
@@ -18,6 +18,39 @@ interface MemberDraft {
   wallet: string;
   role: string;
   share: number;
+}
+
+// ═══ Brouillon localStorage — survit à la fermeture de page ═══
+interface PactDraft {
+  step: number;
+  title: string;
+  description: string;
+  selectedRoles: string[];
+  customRoles: string[];
+  myShare: number;
+  shareTouched: boolean;
+  stage: string;
+  seedAmount: string;
+  members: MemberDraft[];
+  projectId: string;
+  projectPda: string;
+  savedAt: number;
+}
+
+const draftKey = (wallet: string) => `buildpact_pact_draft_${wallet}`;
+
+function loadDraft(wallet: string): PactDraft | null {
+  try {
+    const raw = localStorage.getItem(draftKey(wallet));
+    if (!raw) return null;
+    const d = JSON.parse(raw) as PactDraft;
+    if (!d || typeof d !== 'object' || !d.title) return null;
+    // Expire après 7 jours
+    if (Date.now() - d.savedAt > 7 * 24 * 3600 * 1000) return null;
+    return d;
+  } catch {
+    return null;
+  }
 }
 
 const STAGES = [
@@ -98,6 +131,7 @@ function suggestShare(roleIds: string[], customCount: number, stage: string): nu
   const cap = stage === 'invest' ? 55 : 40;
   return Math.min(Math.max(suggested, 10), cap);
 }
+
 // Raccourcit un label rôle pour tenir dans MAX_ROLE_LEN (24 BYTES on-chain)
 function roleShortLabel(id: string): string {
   const SHORT: Record<string, string> = {
@@ -123,8 +157,9 @@ function slugId(name: string): string {
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '')
     .slice(0, 12) || 'pact';
-  return `${slug}-${Date.now().toString(36).slice(-6)}`; // ex: "seeekr-mobile-abc123"
+  return `${slug}-${Date.now().toString(36).slice(-6)}`; // ex: "seeker-mobile-abc123"
 }
+
 export function CreatePactWizard({ onSuccess }: Props) {
   const { publicKey } = useWallet();
   const program = useAnchorProgram();
@@ -145,6 +180,59 @@ export function CreatePactWizard({ onSuccess }: Props) {
 
   const [projectPda, setProjectPda] = useState<PublicKey | null>(null);
   const [projectId, setProjectId] = useState('');
+
+  // Brouillon existant proposé à la reprise
+  const [pendingDraft, setPendingDraft] = useState<PactDraft | null>(null);
+
+  // ─── Restauration du brouillon au montage ───
+  useEffect(() => {
+    if (!publicKey) return;
+    const d = loadDraft(publicKey.toBase58());
+    if (d) setPendingDraft(d);
+  }, [publicKey]);
+
+  // ─── Sauvegarde automatique du brouillon à chaque changement ───
+  useEffect(() => {
+    if (!publicKey) return;
+    // Ne sauvegarde que si quelque chose a été saisi
+    if (!title && step === 1) return;
+    const draft: PactDraft = {
+      step, title, description, selectedRoles, customRoles,
+      myShare, shareTouched, stage, seedAmount, members,
+      projectId,
+      projectPda: projectPda ? projectPda.toBase58() : '',
+      savedAt: Date.now(),
+    };
+    try {
+      localStorage.setItem(draftKey(publicKey.toBase58()), JSON.stringify(draft));
+    } catch { /* quota plein : non bloquant */ }
+  }, [publicKey, step, title, description, selectedRoles, customRoles,
+      myShare, shareTouched, stage, seedAmount, members, projectId, projectPda]);
+
+  const clearDraft = () => {
+    if (!publicKey) return;
+    try { localStorage.removeItem(draftKey(publicKey.toBase58())); } catch {}
+    setPendingDraft(null);
+  };
+
+  const resumeDraft = () => {
+    if (!pendingDraft) return;
+    setStep(pendingDraft.step);
+    setTitle(pendingDraft.title);
+    setDescription(pendingDraft.description);
+    setSelectedRoles(pendingDraft.selectedRoles);
+    setCustomRoles(pendingDraft.customRoles);
+    setMyShare(pendingDraft.myShare);
+    setShareTouched(pendingDraft.shareTouched);
+    setStage(pendingDraft.stage);
+    setSeedAmount(pendingDraft.seedAmount);
+    setMembers(pendingDraft.members);
+    setProjectId(pendingDraft.projectId);
+    if (pendingDraft.projectPda) {
+      try { setProjectPda(new PublicKey(pendingDraft.projectPda)); } catch {}
+    }
+    setPendingDraft(null);
+  };
 
   if (!publicKey || !program) {
     return <p className="text-ink-300">Connectez votre wallet</p>;
@@ -191,50 +279,50 @@ export function CreatePactWizard({ onSuccess }: Props) {
   };
 
   const handleCreate = async () => {
-  setLoading(true);
-  setError(null);
-  try {
-    const stageLabel = STAGES.find((s) => s.id === stage)?.label ?? stage;
-    const id = slugId(title); // ✅ ≤ 20 bytes garanti
+    setLoading(true);
+    setError(null);
+    try {
+      const stageLabel = STAGES.find((s) => s.id === stage)?.label ?? stage;
+      const id = slugId(title); // ✅ ≤ 20 bytes garanti
 
-    const seedInfo =
-      seedAmount && Number(seedAmount) > 0
-        ? ` | 💰 Seed founder : ${seedAmount} SOL (engagement annoncé)`
-        : '';
-    const fullDescription = (
-      '[' + stageLabel + '] ' +
-      description +
-      ' | Rôles créateur : ' + myRoleLabel + // ✅ la liste COMPLÈTE part ici (280 max)
-      seedInfo
-    ).slice(0, 280);
+      const seedInfo =
+        seedAmount && Number(seedAmount) > 0
+          ? ` | 💰 Seed founder : ${seedAmount} SOL (engagement annoncé)`
+          : '';
+      const fullDescription = (
+        '[' + stageLabel + '] ' +
+        description +
+        ' | Rôles créateur : ' + myRoleLabel + // ✅ la liste COMPLÈTE part ici (280 max)
+        seedInfo
+      ).slice(0, 280);
 
-    // ✅ UN SEUL rôle, court, ≤ 24 bytes pour le programme
-    const creatorRoleOnChain = selectedRoles.length > 0
-      ? roleShortLabel(selectedRoles[0])
-      : (customRoles[0]?.slice(0, 24) ?? 'Founder');
+      // ✅ UN SEUL rôle, court, ≤ 24 bytes pour le programme
+      const creatorRoleOnChain = selectedRoles.length > 0
+        ? roleShortLabel(selectedRoles[0])
+        : (customRoles[0]?.slice(0, 24) ?? 'Founder');
 
-    const creatorShareBps = effectiveShare * 100;
+      const creatorShareBps = effectiveShare * 100;
 
-    const { projectPda: pda } = await createProject(
-      program,
-      publicKey,
-      id,
-      title.slice(0, 40),          // ✅ sécurité
-      fullDescription,
-      creatorRoleOnChain,
-      creatorShareBps,
-      new PublicKey(PLATFORM_WALLET)
-    );
+      const { projectPda: pda } = await createProject(
+        program,
+        publicKey,
+        id,
+        title.slice(0, 40),          // ✅ sécurité
+        fullDescription,
+        creatorRoleOnChain,
+        creatorShareBps,
+        new PublicKey(PLATFORM_WALLET)
+      );
 
-    setProjectId(id);
-    setProjectPda(pda);
-    setStep(2);
-  } catch (e) {
-    setError(parseTxError(e));
-  } finally {
-    setLoading(false);
-  }
-};
+      setProjectId(id);
+      setProjectPda(pda);
+      setStep(2);
+    } catch (e) {
+      setError(parseTxError(e));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleAddMember = async () => {
     if (!projectPda) return;
@@ -244,13 +332,13 @@ export function CreatePactWizard({ onSuccess }: Props) {
       const validMembers = members.filter((m) => m.wallet.trim() !== '');
       for (const m of validMembers) {
         await addMember(
-  program,
-  publicKey,
-  projectPda,
-  new PublicKey(m.wallet),
-  m.role.slice(0, 24),   // ✅ un rôle membre > 24 bytes = même crash 6005
-  m.share * 100
-);
+          program,
+          publicKey,
+          projectPda,
+          new PublicKey(m.wallet),
+          m.role.slice(0, 24),   // ✅ un rôle membre > 24 bytes = même crash 6005
+          m.share * 100
+        );
       }
       setStep(3);
     } catch (e) {
@@ -265,8 +353,16 @@ export function CreatePactWizard({ onSuccess }: Props) {
     setLoading(true);
     setError(null);
     try {
-      await approve(program, publicKey, projectPda);
+      // Le créateur est auto-approuvé on-chain → AlreadyApproved attendu, on l'ignore
+      try {
+        await approve(program, publicKey, projectPda);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        // 6010 = AlreadyApproved (custom error Anchor), 0x177a = hex de 6010
+        if (!msg.includes('6010') && !msg.includes('0x177a')) throw e;
+      }
       await finalize(program, publicKey, projectPda);
+      clearDraft();
       onSuccess();
     } catch (e) {
       setError(parseTxError(e));
@@ -290,6 +386,35 @@ export function CreatePactWizard({ onSuccess }: Props) {
         {step === 2 && 'Projet créé on-chain ✅ — Maintenant, ajoute les membres du pact'}
         {step === 3 && 'Dernière étape : approbation et finalisation'}
       </p>
+
+      {/* ═══ Reprise de brouillon (page fermée = rien perdu) ═══ */}
+      {pendingDraft && step === 1 && (
+        <div className="mb-4 rounded-lg border border-amber-400/40 bg-amber-500/10 p-3">
+          <p className="text-[12px] font-semibold text-amber-300">
+            📝 Brouillon trouvé : « {pendingDraft.title} »
+            {pendingDraft.projectPda && ' (projet déjà créé on-chain)'}
+          </p>
+          <p className="mt-1 text-[11px] text-amber-200/70">
+            Tu peux reprendre exactement où tu en étais — aucune donnée ni frais perdus.
+          </p>
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              onClick={resumeDraft}
+              className="flex-1 rounded bg-amber-500 py-1.5 text-xs font-bold text-ink-900"
+            >
+              ▶ Reprendre le brouillon
+            </button>
+            <button
+              type="button"
+              onClick={clearDraft}
+              className="rounded border border-amber-400/40 px-3 py-1.5 text-xs text-amber-300"
+            >
+              Ignorer
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ═══════════ ÉTAPE 1 — IDENTITÉ ═══════════ */}
       {step === 1 && (
@@ -537,6 +662,9 @@ export function CreatePactWizard({ onSuccess }: Props) {
             💡 Ta part créateur : <strong className="text-white">{effectiveShare} %</strong> —
             il reste <strong className="text-white">{remainingForMembers} %</strong> à
             répartir entre les membres. Le total doit faire exactement 100 %.
+            <br />
+            ⚠️ Le programme exige <strong className="text-white">au moins 1 membre</strong>{' '}
+            en plus du créateur (≥ 2 membres au total pour finaliser).
           </div>
 
           {members.map((m, i) => (
@@ -576,6 +704,14 @@ export function CreatePactWizard({ onSuccess }: Props) {
             + Ajouter un membre
           </button>
 
+          {members.length === 0 && (
+            <div className="rounded-lg border border-red-400/40 bg-red-500/10 p-3 text-[11px] text-red-300">
+              🚫 Impossible de continuer sans membre : le programme exige au moins 2
+              membres (créateur inclus). Ajoute au moins un membre, même un second
+              wallet à toi pour tester.
+            </div>
+          )}
+
           {members.length >= 8 && (
             <div className="rounded-lg border border-amber-400/40 bg-amber-500/10 p-3 text-[11px] text-amber-300">
               ⚠️ <strong>Limite technique :</strong> le programme actuel stocke les
@@ -600,14 +736,10 @@ export function CreatePactWizard({ onSuccess }: Props) {
           <button
             type="button"
             onClick={handleAddMember}
-            disabled={loading || totalShares !== 100}
+            disabled={loading || totalShares !== 100 || members.filter((m) => m.wallet.trim()).length === 0}
             className="w-full rounded bg-accent-violet py-2 font-bold text-white disabled:opacity-50"
           >
-            {loading
-              ? 'Ajout...'
-              : members.length > 0
-                ? 'Ajouter les membres on-chain'
-                : 'Continuer (aucun membre)'}
+            {loading ? 'Ajout...' : 'Ajouter les membres on-chain'}
           </button>
         </div>
       )}
@@ -617,22 +749,27 @@ export function CreatePactWizard({ onSuccess }: Props) {
         <div className="space-y-4 text-center">
           <p className="text-white">Membres enregistrés !</p>
           <p className="text-sm text-ink-300">
-            En production, chaque membre devra se connecter avec SON wallet pour
-            approuver. Pour tester seul, clique ci-dessous (marche uniquement si tu es
-            le seul membre).
+            Chaque membre doit maintenant se connecter avec <strong>SON</strong> wallet
+            et approuver depuis la carte du projet. Une fois toutes les approbations
+            récoltées, le créateur finalise.
           </p>
+          <div className="rounded-lg border border-accent-violet/25 bg-violet-500/10 p-3 text-left text-[11px] leading-snug text-ink-300">
+            📋 <strong className="text-white">Prochaines actions :</strong>
+            <br />1. Envoie le lien de la dApp aux membres
+            <br />2. Chacun approuve avec son wallet (bouton "Approve" sur la carte)
+            <br />3. Reviens ici et clique "Finaliser" — le pact devient actif
+          </div>
           <button
             type="button"
             onClick={handleFinalize}
             disabled={loading}
             className="w-full rounded bg-accent-neon py-2 font-bold text-ink-900 disabled:opacity-50"
           >
-            {loading ? 'Finalisation...' : 'Approuver & Finaliser (TEST)'}
+            {loading ? 'Finalisation...' : 'Finaliser le pact on-chain'}
           </button>
         </div>
       )}
 
       {error && <p className="mt-4 text-sm text-red-400">{error}</p>}
     </div>
-  );
-}
+  )
