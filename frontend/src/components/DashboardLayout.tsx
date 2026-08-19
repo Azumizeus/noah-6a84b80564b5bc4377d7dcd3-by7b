@@ -113,7 +113,7 @@ export function DashboardLayout({
 
             <nav aria-label="Navigation principale" className="hidden md:block">
               <ul className="flex items-center gap-1">
-                {links.map((l) => (
+                {navLinks.map((l) => (
                   <li key={l.href}>
                     <a
                       href={l.href}
