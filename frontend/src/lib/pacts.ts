@@ -1,25 +1,47 @@
 // src/lib/pacts.ts
-export type PactStatus = 'active' | 'pending' | 'closed';
+import type { PublicKey } from '@solana/web3.js';
 
-export interface Pact {
-  id: string;
-  title: string;
-  counterparty: string;
+export type PactStatus = 'active' | 'pending'; // active = Finalized, pending = Open
+
+export interface ChainMember {
+  wallet: PublicKey;
+  role: string;
   shareBps: number;
-  claimable: number;
-  totalEarned: number;
-  status: PactStatus;
-  lastClaimAt?: string;
+  approved: boolean;
 }
 
-// Données démo — remplacées par les comptes Anchor à l'intégration program
-export const PACTS: Pact[] = [
-  { id: 'pact-01', title: 'Revenue Share — Marketplace Fees', counterparty: '9WzD…E9gC',
-    shareBps: 2500, claimable: 12.5, totalEarned: 87.3124, status: 'active', lastClaimAt: 'il y a 2 h' },
-  { id: 'pact-02', title: 'NFT Royalties — Genesis Drop', counterparty: '5HsT…kL9p',
-    shareBps: 1000, claimable: 5.9231, totalEarned: 32.1047, status: 'active', lastClaimAt: 'il y a 1 j' },
-  { id: 'pact-03', title: 'Validator Commission Split', counterparty: '2PcE…mN7r',
-    shareBps: 5000, claimable: 0, totalEarned: 23.1189, status: 'pending', lastClaimAt: 'il y a 3 j' },
-  { id: 'pact-04', title: 'Q1 Bonus — Closed Pact', counterparty: '7FkL…tR4s',
-    shareBps: 1500, claimable: 0, totalEarned: 5.0, status: 'closed', lastClaimAt: 'il y a 14 j' },
-];
+export interface ChainPact {
+  pda: PublicKey;
+  projectId: string;
+  title: string;
+  description: string;
+  creator: PublicKey;
+  members: ChainMember[];
+  status: PactStatus;
+  protocolWallet: PublicKey;
+  vaultBalanceSol: number;
+  myShareBps: number;      // 0 si le wallet connecté n'est pas membre
+  myClaimableSol: number;  // quote-part du vault
+}
+
+export function truncateAddress(addr: string): string {
+  if (addr.length <= 9) return addr;
+  return `${addr.slice(0, 4)}…${addr.slice(-4)}`;
+}
+
+export function explorerTxUrl(sig: string): string {
+  return `https://explorer.solana.com/tx/${sig}?cluster=devnet`;
+}
+
+/** Erreur Anchor/wallet → message lisible */
+export function parseTxError(err: unknown): string {
+  const e = err as any;
+  const msg: string = e?.error?.errorMessage ?? e?.message ?? String(err);
+  if (msg.includes('User rejected')) return 'Transaction refusée dans le wallet.';
+  if (msg.includes('6017') || msg.includes('DistributionEmpty')) return 'Vault vide — rien à distribuer.';
+  if (msg.includes('6015') || msg.includes('NotFinalized')) return 'Projet non finalisé.';
+  if (msg.includes('6016') || msg.includes('MemberMismatch')) return 'Liste des membres invalide.';
+  if (msg.includes('6012') || msg.includes('NotAllApproved')) return 'Tous les membres n\'ont pas approuvé.';
+  if (msg.includes('insufficient funds')) return 'SOL insuffisant pour les frais de transaction.';
+  return msg.length > 140 ? msg.slice(0, 140) + '…' : msg;
+}
