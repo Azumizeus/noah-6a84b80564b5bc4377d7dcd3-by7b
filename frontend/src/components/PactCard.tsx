@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import { PublicKey } from '@solana/web3.js';
-import { formatSol, formatAddress } from '../lib/pacts';
+import { useWallet } from '@solana/wallet-adapter-react';
+import { formatSol, formatAddress, parseTxError } from '../lib/pacts';
+import { approve } from '../lib/anchor';
+import { useAnchorProgram } from '../hooks/useProjects';
 import type { Pact, PactAction } from '../types/pact';
 import AddMemberModal from './AddMemberModal';
 
@@ -14,14 +16,42 @@ interface Props {
 }
 
 export default function PactCard({ pact, walletConnected, busyAction, onDistribute, onFund, onFinalize }: Props) {
+  const { publicKey } = useWallet();
+  const program = useAnchorProgram();
   const [fundAmount, setFundAmount] = useState('0.1');
   const [showAddMember, setShowAddMember] = useState(false);
+  const [approving, setApproving] = useState(false);
+  const [approveError, setApproveError] = useState<string | null>(null);
 
   const statusColor = pact.status === 'active' ? 'text-emerald-400 border-emerald-400/30 bg-emerald-400/10' : 'text-amber-400 border-amber-400/30 bg-amber-400/10';
   const statusLabel = pact.status === 'active' ? 'Finalisé' : 'Ouvert';
 
-  const canFinalize = pact.members.length >= 2;
+  // --- Approbations ---
+  const myAddr = publicKey?.toBase58();
+  const me = myAddr
+    ? pact.members.find((m: any) => m.wallet?.toBase58?.() === myAddr)
+    : undefined;
+  const iAmMember = Boolean(me);
+  const iHaveApproved = Boolean((me as any)?.approved);
+  const approvedCount = pact.members.filter((m: any) => m.approved).length;
+  const allApproved = pact.members.length > 0 && approvedCount === pact.members.length;
+
+  const canFinalize = pact.members.length >= 2 && allApproved;
   const canDistribute = pact.vaultBalanceSol > 0;
+
+  const handleApprove = async () => {
+    if (!publicKey || !program) return;
+    setApproving(true);
+    setApproveError(null);
+    try {
+      await approve(program, publicKey, pact.pda);
+      window.location.reload();
+    } catch (e: any) {
+      setApproveError(parseTxError(e));
+    } finally {
+      setApproving(false);
+    }
+  };
 
   return (
     <>
@@ -66,9 +96,38 @@ export default function PactCard({ pact, walletConnected, busyAction, onDistribu
                 >
                   + Ajouter membre
                 </button>
-                <div className="text-xs text-ink-400">
-                  {pact.members.length < 2 && '⚠️ Minimum 2 membres requis pour finaliser'}
+
+                {/* Compteur d'approbations */}
+                <div className="rounded-lg border border-white/5 bg-black/30 px-3 py-2 text-xs">
+                  {pact.members.length < 2 ? (
+                    <span className="text-amber-400">⚠️ Minimum 2 membres requis pour finaliser</span>
+                  ) : allApproved ? (
+                    <span className="text-emerald-400">✅ Approbations : {approvedCount}/{pact.members.length} — prêt à finaliser</span>
+                  ) : (
+                    <span className="text-amber-400">⏳ Approbations : {approvedCount}/{pact.members.length} — en attente de signatures</span>
+                  )}
                 </div>
+
+                {/* Bouton Approuver : visible si je suis membre et pas encore approuvé */}
+                {iAmMember && !iHaveApproved && (
+                  <button
+                    onClick={handleApprove}
+                    disabled={approving || busyAction !== null}
+                    className="w-full rounded-lg border border-emerald-500/50 bg-emerald-500/10 py-2 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20 disabled:opacity-50"
+                  >
+                    {approving ? 'Signature...' : '✅ Approuver ce pact'}
+                  </button>
+                )}
+
+                {iAmMember && iHaveApproved && (
+                  <div className="text-xs text-emerald-400">✅ Vous avez approuvé ce pact</div>
+                )}
+
+                {approveError && (
+                  <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-sm text-red-400">
+                    {approveError}
+                  </div>
+                )}
               </div>
             )}
 
@@ -99,9 +158,19 @@ export default function PactCard({ pact, walletConnected, busyAction, onDistribu
                   onClick={() => onFinalize(pact)}
                   disabled={busyAction !== null || !canFinalize}
                   className="flex-1 rounded-lg bg-accent-violet px-4 py-2 text-sm font-medium text-white transition hover:bg-accent-violet/90 disabled:opacity-50"
-                  title={!canFinalize ? 'Ajoute au moins 2 membres' : ''}
+                  title={
+                    pact.members.length < 2
+                      ? 'Ajoute au moins 2 membres'
+                      : !allApproved
+                        ? `En attente : ${approvedCount}/${pact.members.length} approbations`
+                        : ''
+                  }
                 >
-                  {busyAction === 'finalize' ? 'Finalisation...' : '🔒 Finaliser'}
+                  {busyAction === 'finalize'
+                    ? 'Finalisation...'
+                    : allApproved
+                      ? '🔒 Finaliser'
+                      : `🔒 Finaliser (${approvedCount}/${pact.members.length} approuvés)`}
                 </button>
               ) : (
                 <button
@@ -124,8 +193,7 @@ export default function PactCard({ pact, walletConnected, busyAction, onDistribu
           onClose={() => setShowAddMember(false)}
           onSuccess={() => {
             setShowAddMember(false);
-            // Le refresh se fera via usePactActions / onSuccess dans le parent
-            window.location.reload(); // Simple et efficace pour le MVP
+            window.location.reload();
           }}
         />
       )}
