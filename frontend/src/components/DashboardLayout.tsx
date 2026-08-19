@@ -146,11 +146,10 @@ export function DashboardLayout({
           <footer className="border-t border-violet-500/10 py-6 text-xs text-ink-500">
             <div className="flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center">
               <p>© {new Date().getFullYear()} BuildPact Protocol · Devnet</p>
-              <p className="font-mono">
-                Built on <span className="text-accent-violet">Solana</span> · Audited by{' '}
-                      Built on <span className="text-accent-violet">Solana</span> ·{' '}
-      <span className="text-accent-gold">Unaudited — Devnet only</span>
-              </p>
+             <p className="font-mono">
+  Built on <span className="text-accent-violet">Solana</span> ·{' '}
+  <span className="text-accent-gold">Unaudited — Devnet only</span>
+</p>
             </div>
           </footer>
         </div>
