@@ -1,30 +1,26 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
   theme: {
     extend: {
       colors: {
-        base: {
-          DEFAULT: '#030308',
-          700: '#0A0A18',
-        },
+        base: '#030308',
+        panel: 'rgba(18,18,38,0.55)',
         accent: {
           violet: '#9945FF',
           neon: '#14F195',
           gold: '#FFD700',
         },
-        ink: {
-          200: 'rgba(255,255,255,0.85)',
-          300: 'rgba(255,255,255,0.70)',
-          500: 'rgba(255,255,255,0.45)',
-        },
       },
       fontFamily: {
-        sans: ['Space Grotesk', 'system-ui', 'sans-serif'],
+        sans: ['Space Grotesk', 'sans-serif'],
         mono: ['Space Mono', 'monospace'],
       },
       animation: {
-        float: 'float 8s ease-in-out infinite',
+        float: 'float 6s ease-in-out infinite',
       },
       keyframes: {
         float: {
@@ -35,4 +31,4 @@ export default {
     },
   },
   plugins: [],
-};
+}
