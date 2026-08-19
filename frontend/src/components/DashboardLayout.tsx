@@ -55,6 +55,9 @@ export function DashboardLayout({
   navLinks = DEFAULT_LINKS,
 }: DashboardLayoutProps) {
   const prefersReduced = useReducedMotion();
+  const route = useHashRoute();
+  const linksWithActive = navLinks.map((l) => ({ ...l, active: l.href === `#${route}` }));
+
   // Si reduced motion, on saute l'état hidden initial — rendu immédiat
   const motionProps = prefersReduced
     ? { initial: false as const, animate: 'visible' as const }
@@ -147,10 +150,10 @@ export function DashboardLayout({
           <footer className="border-t border-violet-500/10 py-6 text-xs text-ink-500">
             <div className="flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center">
               <p>© {new Date().getFullYear()} BuildPact Protocol · Devnet</p>
-             <p className="font-mono">
-  Built on <span className="text-accent-violet">Solana</span> ·{' '}
-  <span className="text-accent-gold">Unaudited — Devnet only</span>
-</p>
+              <p className="font-mono">
+                Built on <span className="text-accent-violet">Solana</span> ·{' '}
+                <span className="text-accent-gold">Unaudited — Devnet only</span>
+              </p>
             </div>
           </footer>
         </div>
