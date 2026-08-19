@@ -4,6 +4,7 @@ import { PublicKey } from '@solana/web3.js';
 import { addMember } from '../lib/anchor';
 import { useAnchorProgram } from '../hooks/useProjects';
 import { parseTxError } from '../lib/pacts';
+import { PROJECT_ROLES } from '../lib/roles';
 
 interface Props {
   projectPda: PublicKey;
@@ -16,7 +17,7 @@ export default function AddMemberModal({ projectPda, projectTitle, onClose, onSu
   const { publicKey } = useWallet();
   const program = useAnchorProgram();
   const [wallet, setWallet] = useState('');
-  const [role, setRole] = useState('member');
+  const [role, setRole] = useState('Member');
   const [share, setShare] = useState('20');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,15 +74,19 @@ export default function AddMemberModal({ projectPda, projectTitle, onClose, onSu
           </div>
 
           <div>
-            <label className="block text-sm text-gray-300 mb-1">Role (max 24 caracteres)</label>
-            <input
-              type="text"
+            <label className="block text-sm text-gray-300 mb-1">Role</label>
+            <select
               value={role}
               onChange={(e) => setRole(e.target.value)}
-              maxLength={24}
               className="w-full bg-black/50 border border-purple-500/30 rounded-lg px-3 py-2 text-white text-sm focus:border-purple-500 focus:outline-none"
               required
-            />
+            >
+              {PROJECT_ROLES.map((r) => (
+                <option key={r} value={r} className="bg-[#0d0d15]">
+                  {r}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div>
