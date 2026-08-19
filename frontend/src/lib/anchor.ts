@@ -56,12 +56,13 @@ export function findVaultPda(project: PublicKey): [PublicKey, number] {
 // Fix "Blockhash not found" : on ne fait JAMAIS confiance au blockhash
 // interne d'Anchor, on en prend un neuf à chaque tentative.
 // ═══════════════════════════════════════════════════════════════════
+import { getRpcEndpoint, rotateRpc, isRateLimitError } from './constants';
+
 async function buildAndSend(
   program: Program,
-  txBuilder: any // TransactionBuilder retourné par program.methods.x().accounts()
+  txBuilder: any
 ): Promise<string> {
   const provider = program.provider as AnchorProvider;
-  const connection = provider.connection;
   const wallet = provider.wallet as any;
 
   if (!wallet?.signTransaction || !wallet?.publicKey) {
@@ -71,25 +72,22 @@ async function buildAndSend(
   let lastError: unknown = null;
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    // Connexion fraîche à chaque tentative (endpoint courant)
+    const connection = new Connection(getRpcEndpoint(), 'confirmed');
     try {
-      // 1) Construit la tx (sans l'envoyer)
       const tx: Transaction = await txBuilder.transaction();
 
-      // 2) Blockhash tout frais — c'est LE fix
       const { blockhash, lastValidBlockHeight } =
         await connection.getLatestBlockhash('confirmed');
 
       tx.recentBlockhash = blockhash;
       tx.feePayer = wallet.publicKey as PublicKey;
 
-      // 3) Signe via le wallet (Phantom ouvre sa popup ici)
       const signed = (await wallet.signTransaction(tx)) as
         | Transaction
         | VersionedTransaction;
 
-      // 4) Envoie brut — pas de re-simulation obsolète
-      const raw =
-        signed instanceof Transaction ? signed.serialize() : signed.serialize();
+      const raw = signed.serialize();
 
       const sig = await connection.sendRawTransaction(raw, {
         skipPreflight: false,
@@ -97,7 +95,6 @@ async function buildAndSend(
         maxRetries: 3,
       });
 
-      // 5) Confirmation liée au blockhash précis
       await connection.confirmTransaction(
         { signature: sig, blockhash, lastValidBlockHeight },
         'confirmed'
@@ -108,15 +105,32 @@ async function buildAndSend(
       lastError = e;
       const msg: string = e?.message ?? '';
 
-      // Si l'utilisateur a annulé dans Phantom → pas de retry, on remonte
-      if (
-        msg.includes('User rejected') ||
-        msg.includes('user rejected') ||
-        e?.name === 'WalletSignTransactionError'
-      ) {
+      // Annulation utilisateur → remontée directe, pas de retry
+      if (msg.includes('User rejected') || e?.name === 'WalletSignTransactionError') {
         throw e;
       }
 
+      // Rate limit RPC → on change d'endpoint et on réessaie
+      if (isRateLimitError(e)) {
+        rotateRpc();
+        await new Promise((r) => setTimeout(r, 300));
+        continue;
+      }
+
+      const retryable =
+        msg.includes('Blockhash not found') ||
+        msg.includes('blockhash') ||
+        msg.includes('Transaction simulation failed') ||
+        msg.includes('Network request failed');
+
+      if (!retryable || attempt === MAX_RETRIES) throw e;
+
+      await new Promise((r) => setTimeout(r, 400 * attempt));
+    }
+  }
+
+  throw lastError;
+}
       // Blockhash expiré ou erreur réseau transitoire → retry
       const retryable =
         msg.includes('Blockhash not found') ||
@@ -244,5 +258,17 @@ export async function fetchProject(program: Program, projectPda: PublicKey) {
 }
 
 export async function fetchAllProjects(program: Program) {
-  return (program.account as any).project.all();
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      return await (program.account as any).project.all();
+    } catch (e) {
+      if (isRateLimitError(e) && attempt < 3) {
+        rotateRpc();
+        // Recrée un program readonly sur le nouvel endpoint
+        program = getReadonlyProgram();
+        continue;
+      }
+      throw e;
+    }
+  }
 }
