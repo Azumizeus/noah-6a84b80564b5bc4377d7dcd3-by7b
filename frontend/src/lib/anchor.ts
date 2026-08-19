@@ -100,7 +100,6 @@ async function buildAndSend(
       // ═══ FIN GARDE-FOU ═══
 
       const raw = signed.serialize();
-      const raw = signed.serialize();
 
       const sig = await connection.sendRawTransaction(raw, {
         skipPreflight: false,
