@@ -21,7 +21,9 @@ export function AppWalletButton() {
   }, [connection, publicKey]);
 
   const handleConnect = useCallback(() => setVisible(true), [setVisible]);
-  const handleDisconnect = useCallback(() => { void disconnect(); }, [disconnect]);
+  const handleDisconnect = useCallback(() => {
+  void disconnect().finally(() => window.location.reload());
+}, [disconnect]);
 
   return (
     <WalletButton
