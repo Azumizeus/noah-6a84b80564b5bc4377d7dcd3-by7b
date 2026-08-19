@@ -90,13 +90,13 @@ export function DashboardPage() {
           {preview.map((pact) => (
             <FadeInUp key={pact.pda.toBase58()}>
               <PactCard
-  pact={pact}
-  walletConnected={connected}
-  busyAction={busyId === pact.pda.toBase58() ? busyAction : null}
-  onDistribute={runDistribute}
-  onFund={runFund}
-  onFinalize={runFinalize}
-/>
+                pact={pact}
+                walletConnected={connected}
+                busyAction={busyId === pact.pda.toBase58() ? busyAction : null}
+                onDistribute={runDistribute}
+                onFund={runFund}
+                onFinalize={runFinalize}
+              />
             </FadeInUp>
           ))}
         </section>
