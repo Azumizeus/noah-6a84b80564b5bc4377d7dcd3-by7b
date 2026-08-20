@@ -246,19 +246,42 @@ pub mod workspace {
         Ok(())
     }
 
-    // ⬇️ NOUVEAU — suppression d'un projet NON finalisé (créateur uniquement, vault vide)
+    // Suppression d'un projet NON finalisé (créateur uniquement).
+    // Sécurité anti-dust : si le vault contient des lamports (ex: envoi malveillant
+    // pour bloquer la fermeture), on les rembourse intégralement au créateur AVANT
+    // de fermer. Le vault se retrouve à 0 et est purgé par le runtime — zéro déchet.
     pub fn close_project(ctx: Context<CloseProject>) -> Result<()> {
         let project = &ctx.accounts.project;
         require!(
             project.status != ProjectStatus::Finalized,
             ErrorCode::AlreadyFinalized
         );
-        // Le vault doit être strictement vide (compte System sans data = minimum 0)
+
+        // Remboursement du vault au créateur (anti-griefing / anti-dust)
         let vault_lamports = ctx.accounts.vault.lamports();
-        require!(vault_lamports == 0, ErrorCode::VaultNotEmpty);
+        if vault_lamports > 0 {
+            let project_key = ctx.accounts.project.key();
+            let bump_arr = [ctx.bumps.vault];
+            let seeds: &[&[u8]] = &[b"vault", project_key.as_ref(), &bump_arr];
+            let signer_seeds: &[&[&[u8]]] = &[seeds];
+
+            transfer(
+                CpiContext::new_with_signer(
+                    ctx.accounts.system_program.to_account_info(),
+                    Transfer {
+                        from: ctx.accounts.vault.to_account_info(),
+                        to: ctx.accounts.creator.to_account_info(),
+                    },
+                    signer_seeds,
+                ),
+                vault_lamports,
+            )?;
+        }
+
+        // `close = creator` dans le struct ci-dessous s'occupe de :
+        // fermer le compte Project + rendre sa rent au créateur.
         Ok(())
     }
-    // ⬆️ NOUVEAU
 }
 
 #[account]
@@ -435,7 +458,6 @@ pub struct Distribute<'info> {
     pub system_program: Program<'info, System>,
 }
 
-// ⬇️ NOUVEAU — comptes pour close_project
 #[derive(Accounts)]
 pub struct CloseProject<'info> {
     #[account(
@@ -448,6 +470,7 @@ pub struct CloseProject<'info> {
     pub project: Account<'info, Project>,
 
     #[account(
+        mut,
         seeds = [b"vault", project.key().as_ref()],
         bump,
     )]
@@ -455,8 +478,9 @@ pub struct CloseProject<'info> {
 
     #[account(mut)]
     pub creator: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
 }
-// ⬆️ NOUVEAU
 
 #[error_code]
 pub enum ErrorCode {
@@ -496,8 +520,4 @@ pub enum ErrorCode {
     MemberMismatch,
     #[msg("Nothing available to distribute")]
     DistributionEmpty,
-    // ⬇️ NOUVEAU
-    #[msg("Vault must be empty before closing the project")]
-    VaultNotEmpty,
-    // ⬆️ NOUVEAU
 }
