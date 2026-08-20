@@ -298,8 +298,38 @@ pub mod workspace {
             )?;
         }
 
-        // `close = creator` dans le struct ci-dessous s'occupe de :
+               // `close = creator` dans le struct ci-dessous s'occupe de :
         // fermer le compte Project + rendre sa rent au créateur.
+        Ok(())
+    }
+
+    // Retrait d'un membre non encore approuvé (créateur uniquement).
+    pub fn remove_member(ctx: Context<RemoveMember>, member_wallet: Pubkey) -> Result<()> {
+        let project = &mut ctx.accounts.project;
+
+        require!(
+            project.status == ProjectStatus::Open,
+            ErrorCode::AlreadyFinalized
+        );
+
+        require!(
+            member_wallet != project.creator,
+            ErrorCode::CannotRemoveCreator
+        );
+
+        let index = project
+            .members
+            .iter()
+            .position(|m| m.wallet == member_wallet)
+            .ok_or(ErrorCode::MemberNotFound)?;
+
+        require!(
+            !project.members[index].approved,
+            ErrorCode::MemberAlreadyApproved
+        );
+
+        project.members.remove(index);
+
         Ok(())
     }
 }
