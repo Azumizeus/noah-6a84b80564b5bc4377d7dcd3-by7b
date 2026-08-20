@@ -1,15 +1,10 @@
+Found incorrect program id declaration in "/mnt/programs/workspace/src/lib.rs"
+Updated to 266V7Jct9EVWPeHscDwBpL13251EMUyak7WR9QiT59kQ
 
-
-  buildpact - LiteSVM
-    ✔ creates the project with creator as approved member[0]
-    ✔ adds two more members (creator signs)
-    ✔ rejects add_member from a non-creator signer
-    ✔ members approve the pact
-    ✔ finalizes the pact once all members approved and shares sum to 100%
-    ✔ funds the finalized project's vault
-    ✔ distributes funds: protocol gets exactly 2%, members split 98% pro-rata
-    ✔ rejects funding a still-open project
-
-
-  8 passing (71ms)
-
+All program id declarations are synced.
+Please rebuild the program to update the generated artifacts.
+   Compiling workspace v0.1.0 (/mnt/programs/workspace)
+    Finished `release` profile [optimized] target(s) in 3.91s
+   Compiling workspace v0.1.0 (/mnt/programs/workspace)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.25s
+     Running unittests src/lib.rs (/mnt/target/debug/deps/workspace-8fdbefc5829c5623)
