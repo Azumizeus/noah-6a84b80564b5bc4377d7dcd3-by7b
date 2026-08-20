@@ -45,8 +45,16 @@ export function parseTxError(err: unknown): string {
   if (msg.includes('insufficient funds')) return 'SOL insuffisant pour les frais de transaction.';
   return msg.length > 140 ? msg.slice(0, 140) + '…' : msg;
 }
+
+/**
+ * Formatage SOL adaptatif :
+ * - micro-montants (< 0.001 SOL) → 6 décimales (reçus de distribution lisibles)
+ * - montants courants → 3 décimales
+ */
 export function formatSol(amount: number | undefined | null): string {
   if (amount == null || isNaN(amount)) return '0';
+  if (amount === 0) return '0';
+  if (Math.abs(amount) < 0.001) return amount.toFixed(6);
   return amount.toFixed(3);
 }
 
