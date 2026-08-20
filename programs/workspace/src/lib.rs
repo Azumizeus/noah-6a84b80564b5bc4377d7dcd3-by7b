@@ -103,6 +103,26 @@ pub mod workspace {
         Ok(())
     }
 
+    // ⬇️ NOUVEAU — retire un membre non-approuvé (creator uniquement)
+    pub fn remove_member(ctx: Context<RemoveMember>, wallet: Pubkey) -> Result<()> {
+        let project = &mut ctx.accounts.project;
+        require!(project.status == ProjectStatus::Open, ErrorCode::AlreadyFinalized);
+        require!(wallet != project.creator, ErrorCode::CannotRemoveCreator);
+
+        let index = project
+            .members
+            .iter()
+            .position(|m| m.wallet == wallet)
+            .ok_or(ErrorCode::MemberNotFound)?;
+
+        require!(!project.members[index].approved, ErrorCode::MemberAlreadyApproved);
+
+        project.members.remove(index);
+
+        Ok(())
+    }
+    // ⬆️ NOUVEAU
+    
     pub fn approve(ctx: Context<Approve>) -> Result<()> {
         let member_key = ctx.accounts.member.key();
         let project = &mut ctx.accounts.project;
@@ -482,6 +502,21 @@ pub struct CloseProject<'info> {
     pub system_program: Program<'info, System>,
 }
 
+// ⬇️ NOUVEAU
+#[derive(Accounts)]
+pub struct RemoveMember<'info> {
+    #[account(
+        mut,
+        seeds = [b"project", project.creator.as_ref(), project.project_id.as_bytes()],
+        bump = project.bump,
+        has_one = creator @ ErrorCode::Unauthorized,
+    )]
+    pub project: Account<'info, Project>,
+
+    pub creator: Signer<'info>,
+}
+// ⬆️ NOUVEAU
+
 #[error_code]
 pub enum ErrorCode {
     #[msg("Math overflow occurred")]
@@ -520,4 +555,10 @@ pub enum ErrorCode {
     MemberMismatch,
     #[msg("Nothing available to distribute")]
     DistributionEmpty,
+    #[msg("Cannot remove the project creator")]
+    CannotRemoveCreator,
+    #[msg("Member not found")]
+    MemberNotFound,
+    #[msg("Cannot remove a member who already approved")]
+    MemberAlreadyApproved,
 }
