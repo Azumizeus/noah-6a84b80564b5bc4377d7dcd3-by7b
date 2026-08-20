@@ -268,26 +268,30 @@ export default function PactCard({
             )}
 
             {pact.status === 'active' && (
-              <div className="flex gap-2">
-                <input
-                  type="number"
-                  value={fundAmount}
-                  onChange={(e) => setFundAmount(e.target.value)}
-                  min="0.001"
-                  step="0.001"
-                  className="flex-1 rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm text-white focus:border-accent-violet/50 focus:outline-none"
-                  placeholder="Montant SOL"
-                />
-                <button
-                  onClick={() => onFund(pact, parseFloat(fundAmount))}
-                  disabled={busy}
-                  title="Envoie du SOL dans le vault du projet (backer ou revenu)"
-                  className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
-                >
-                  {busyAction === 'fund'
-                    ? 'Envoi...'
-                    : 'Financer / Revenus'}
-                </button>
+              <div className="flex flex-col gap-2">
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    value={fundAmount}
+                    onChange={(e) => setFundAmount(e.target.value)}
+                    min="0.001"
+                    step="0.001"
+                    className="flex-1 rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm text-white focus:border-accent-violet/50 focus:outline-none"
+                    placeholder="Montant SOL"
+                  />
+                  <button
+                    onClick={() => onFund(pact, parseFloat(fundAmount))}
+                    disabled={busy}
+                    className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
+                  >
+                    {busyAction === 'fund'
+                      ? 'Envoi...'
+                      : '💚 Soutenir ce projet'}
+                  </button>
+                </div>
+                <p className="text-center text-xs text-ink-400">
+                  Grant on-chain — les fonds sont splités automatiquement entre les membres selon leurs parts (2% protocole)
+                </p>
               </div>
             )}
 
