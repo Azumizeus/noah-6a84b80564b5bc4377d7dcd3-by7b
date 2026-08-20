@@ -15,3 +15,10 @@ target/.rustc_info.json
 
 # OS files
 .DS_Store
+.vercel
+.env*
+target/wallet/
+target/
+!target/idl/
+!target/deploy/*.so
+!target/deploy/*-keypair.json

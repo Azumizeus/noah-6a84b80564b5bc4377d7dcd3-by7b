@@ -1,0 +1,18 @@
+# Dépendances
+node_modules/
+
+# Builds
+dist/
+dist-ssr/
+
+# Environnement — JAMAIS commité
+.env
+.env.local
+.env.*.local
+
+# Logs & OS
+*.log
+.DS_Store
+Thumbs.db
+.vercel
+.env*
