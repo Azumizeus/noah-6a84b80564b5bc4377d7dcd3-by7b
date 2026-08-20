@@ -373,4 +373,124 @@ describe("buildpact - LiteSVM", () => {
     };
     await expectFailure(fundIx, funder, "NotFinalized");
   });
+
+  // ═══════════════════════════════════════════════════════════════
+  //  CLOSE PROJECT — CIPHER AUDIT SUITE
+  // ═══════════════════════════════════════════════════════════════
+
+  async function createOpenProject(creatorSigner: any, id: string) {
+    const [pda] = await getProgramDerivedAddress({
+      programAddress,
+      seeds: [
+        new TextEncoder().encode("project"),
+        addressCodec.encode(creatorSigner.address),
+        new TextEncoder().encode(id),
+      ],
+    });
+    const [vault] = await getProgramDerivedAddress({
+      programAddress,
+      seeds: [new TextEncoder().encode("vault"), addressCodec.encode(pda)],
+    });
+
+    const data = coder.instruction.encode("create_project", {
+      project_id: id,
+      title: "Closable",
+      description: "Will be closed",
+      creator_role: "Lead",
+      creator_share_bps: 10000,
+      protocol_wallet: new anchor.web3.PublicKey(protocolWallet.address),
+    });
+    const ix: any = {
+      programAddress,
+      accounts: [
+        { address: pda, role: AccountRole.WRITABLE },
+        { address: creatorSigner.address, role: AccountRole.WRITABLE_SIGNER, signer: creatorSigner },
+        { address: systemProgramAddress, role: AccountRole.READONLY },
+      ],
+      data,
+    };
+    await sendIx(ix, creatorSigner);
+    return { pda, vault };
+  }
+
+  function closeIx(pda: Address, vault: Address, signer: any): any {
+    const data = coder.instruction.encode("close_project", {});
+    return {
+      programAddress,
+      accounts: [
+        { address: pda, role: AccountRole.WRITABLE },
+        { address: vault, role: AccountRole.WRITABLE },
+        { address: signer.address, role: AccountRole.WRITABLE_SIGNER, signer },
+        { address: systemProgramAddress, role: AccountRole.READONLY },
+      ],
+      data,
+    };
+  }
+
+  it("rejects close_project from a non-creator signer", async () => {
+    const { pda, vault } = await createOpenProject(creator, "pact-close-1");
+    const attacker = await generateKeyPairSigner();
+    svm.airdrop(attacker.address, lamports(10n * 1_000_000_000n));
+
+    await expectFailure(closeIx(pda, vault, attacker), attacker, "Unauthorized");
+  });
+
+  it("closes an open project: creator recovers rent, vault is closed too", async () => {
+    const { pda, vault } = await createOpenProject(creator, "pact-close-2");
+
+    const creatorBefore = BigInt(svm.getAccount(creator.address)!.lamports);
+    const projectRent = BigInt(svm.getAccount(pda)!.lamports);
+
+    await sendIx(closeIx(pda, vault, creator), creator);
+
+    // Project account must be gone (or zeroed by Anchor close)
+    const projectAcc = svm.getAccount(pda);
+    const projectGone =
+      !projectAcc ||
+      ("exists" in projectAcc && !(projectAcc as any).exists) ||
+      BigInt(projectAcc.lamports) === 0n;
+    expect(projectGone).to.be.true;
+
+    // Vault drained and closed (0 lamports, owned by system or gone)
+    const vaultAcc = svm.getAccount(vault);
+    if (vaultAcc && !("exists" in vaultAcc && !(vaultAcc as any).exists)) {
+      expect(BigInt(vaultAcc.lamports)).to.equal(0n);
+    }
+
+    // Creator recovered the project rent (minus tiny tx fee)
+    const creatorAfter = BigInt(svm.getAccount(creator.address)!.lamports);
+    expect(creatorAfter - creatorBefore >= projectRent - 10000n).to.be.true;
+  });
+
+  it("dust attack is harmless: closing a dusted vault refunds creator instead of blocking", async () => {
+    const { pda, vault } = await createOpenProject(creator, "pact-close-3");
+
+    // Attacker sends 1 lamport of dust to the vault (would have blocked V1)
+    svm.airdrop(vault, lamports(1n));
+
+    const creatorBefore = BigInt(svm.getAccount(creator.address)!.lamports);
+
+    // Close must succeed despite the dust
+    await sendIx(closeIx(pda, vault, creator), creator);
+
+    const projectAcc = svm.getAccount(pda);
+    const projectGone =
+      !projectAcc ||
+      ("exists" in projectAcc && !(projectAcc as any).exists) ||
+      BigInt(projectAcc.lamports) === 0n;
+    expect(projectGone).to.be.true;
+
+    // Creator got project rent + the dust back (attacker lost his lamport, lol)
+    const creatorAfter = BigInt(svm.getAccount(creator.address)!.lamports);
+    expect(creatorAfter > creatorBefore).to.be.true;
+  });
+
+  it("rejects close_project on the distributed pact (already distributed)", async () => {
+    // The main pact-1 project was distributed earlier — close must fail
+    await expectFailure(
+      closeIx(projectPDA, vaultPDA, creator),
+      creator,
+      "AlreadyFinalized" // close_project requires Open status; Distributed → error
+    );
+  });
 });
