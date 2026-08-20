@@ -18,3 +18,7 @@ target/.rustc_info.json
 .vercel
 .env*
 target/wallet/
+target/
+!target/idl/
+!target/deploy/*.so
+!target/deploy/*-keypair.json
