@@ -17,3 +17,4 @@ target/.rustc_info.json
 .DS_Store
 .vercel
 .env*
+target/wallet/

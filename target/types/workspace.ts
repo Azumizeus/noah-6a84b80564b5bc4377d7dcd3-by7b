@@ -130,6 +130,81 @@ export type Workspace = {
       "args": []
     },
     {
+      "name": "closeProject",
+      "discriminator": [
+        117,
+        209,
+        53,
+        106,
+        93,
+        55,
+        112,
+        49
+      ],
+      "accounts": [
+        {
+          "name": "project",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  106,
+                  101,
+                  99,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "project.creator",
+                "account": "project"
+              },
+              {
+                "kind": "account",
+                "path": "project.project_id",
+                "account": "project"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "project"
+              }
+            ]
+          }
+        },
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "project"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "createProject",
       "discriminator": [
         148,
@@ -592,6 +667,11 @@ export type Workspace = {
       "code": 6017,
       "name": "distributionEmpty",
       "msg": "Nothing available to distribute"
+    },
+    {
+      "code": 6018,
+      "name": "vaultNotEmpty",
+      "msg": "Vault must be empty before closing the project"
     }
   ],
   "types": [
