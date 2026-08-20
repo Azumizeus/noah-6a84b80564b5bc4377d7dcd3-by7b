@@ -6,9 +6,12 @@ import {
   SystemProgram,
   Transaction,
   VersionedTransaction,
+  LAMPORTS_PER_SOL,
 } from '@solana/web3.js';
 import idl from '../idl/buildpact.json';
 import { PROGRAM_ID, PROJECT_SEED, VAULT_SEED, RPC_ENDPOINT, getRpcEndpoint, rotateRpc, isRateLimitError } from './constants';
+import type { ChainPact } from './pacts';
+import type { DistributionReceipt } from '../types/pact';
 
 const MAX_RETRIES = 3;
 
@@ -283,6 +286,64 @@ export async function distribute(
     .remainingAccounts(remaining);
 
   return buildAndSend(program, builder);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// distribute + reçu déterministe
+//  - protocolWallet lu ON-CHAIN depuis le compte projet (source de vérité)
+//  - split calculé off-chain : fee = 2% du vault, net réparti au prorata bps
+//  - CIPHER : remainingAccounts dans l'ordre EXACT de pact.members
+//    (contrainte on-chain MemberMismatch)
+// ═══════════════════════════════════════════════════════════════════
+
+export async function distributeWithReceipt(
+  program: Program,
+  caller: PublicKey,
+  pact: ChainPact
+): Promise<DistributionReceipt> {
+  // ① Source de vérité : le compte projet on-chain
+  const projectAccount = await (program.account as any).project.fetch(pact.pda);
+  const protocolWallet: PublicKey = projectAccount.protocolWallet;
+
+  // ② Envoi de la transaction (même logique que distribute())
+  const [vaultPda] = findVaultPda(pact.pda);
+  const remaining = pact.members.map((m) => ({
+    pubkey: m.wallet,
+    isSigner: false,
+    isWritable: true,
+  }));
+
+  const builder = program.methods
+    .distribute()
+    .accounts({
+      project: pact.pda,
+      vault: vaultPda,
+      protocolWallet,
+      caller,
+      systemProgram: SystemProgram.programId,
+    })
+    .remainingAccounts(remaining);
+
+  const signature = await buildAndSend(program, builder);
+
+  // ③ Reçu déterministe (le split est calculé par le programme de façon
+  //    déterministe → le reçu off-chain reflète exactement l'on-chain)
+  const grossLamports = Math.round(pact.vaultBalanceSol * LAMPORTS_PER_SOL);
+  const feeLamports = Math.floor((grossLamports * 200) / 10_000); // 2%
+  const netLamports = grossLamports - feeLamports;
+
+  return {
+    signature,
+    grossSol: grossLamports / LAMPORTS_PER_SOL,
+    netSol: netLamports / LAMPORTS_PER_SOL,
+    feeSol: feeLamports / LAMPORTS_PER_SOL,
+    payouts: pact.members.map((m) => ({
+      wallet: m.wallet.toBase58(),
+      shareBps: m.shareBps,
+      amountSol: Math.floor((netLamports * m.shareBps) / 10_000) / LAMPORTS_PER_SOL,
+    })),
+    executedAt: Date.now(),
+  };
 }
 
 export async function closeProject(
