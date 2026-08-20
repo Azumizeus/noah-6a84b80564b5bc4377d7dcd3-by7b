@@ -15,8 +15,6 @@ pub const MAX_MEMBERS: usize = 8;
 pub mod workspace {
     use super::*;
 
-    // authority: Pubkey, Platform authority that controls this config, 9PJ8I...3555
-    // protocol_fee_bps: u16, Informational protocol fee in basis points, 200 = 2%
     pub fn initialize_config(
         ctx: Context<InitializeConfig>,
         protocol_fee_bps: u16,
@@ -103,16 +101,15 @@ pub mod workspace {
         Ok(())
     }
 
-    // ⬇️ NOUVEAU — retire un membre non-approuvé (creator uniquement)
-    pub fn remove_member(ctx: Context<RemoveMember>, wallet: Pubkey) -> Result<()> {
+    pub fn remove_member(ctx: Context<RemoveMember>, member_wallet: Pubkey) -> Result<()> {
         let project = &mut ctx.accounts.project;
         require!(project.status == ProjectStatus::Open, ErrorCode::AlreadyFinalized);
-        require!(wallet != project.creator, ErrorCode::CannotRemoveCreator);
+        require!(member_wallet != project.creator, ErrorCode::CannotRemoveCreator);
 
         let index = project
             .members
             .iter()
-            .position(|m| m.wallet == wallet)
+            .position(|m| m.wallet == member_wallet)
             .ok_or(ErrorCode::MemberNotFound)?;
 
         require!(!project.members[index].approved, ErrorCode::MemberAlreadyApproved);
@@ -121,8 +118,7 @@ pub mod workspace {
 
         Ok(())
     }
-    // ⬆️ NOUVEAU
-    
+
     pub fn approve(ctx: Context<Approve>) -> Result<()> {
         let member_key = ctx.accounts.member.key();
         let project = &mut ctx.accounts.project;
@@ -184,7 +180,6 @@ pub mod workspace {
     pub fn distribute<'info>(
         ctx: Context<'_, '_, '_, 'info, Distribute<'info>>,
     ) -> Result<()> {
-        // 1. EXTRACT
         let project = &ctx.accounts.project;
         require!(project.status == ProjectStatus::Finalized, ErrorCode::NotFinalized);
         let members = project.members.clone();
@@ -195,7 +190,6 @@ pub mod workspace {
         let project_key = ctx.accounts.project.key();
         let vault_bump = ctx.bumps.vault;
 
-        // 2. VALIDATE & COMPUTE
         let rent_min = Rent::get()?.minimum_balance(0);
         let vault_balance = ctx.accounts.vault.lamports();
         let available = vault_balance
@@ -225,7 +219,6 @@ pub mod workspace {
             member_amounts.push(amt);
         }
 
-        // 3. CPI — pay protocol fee, then each member pro-rata
         let bump_arr = [vault_bump];
         let seeds: &[&[u8]] = &[b"vault", project_key.as_ref(), &bump_arr];
         let signer_seeds: &[&[&[u8]]] = &[seeds];
@@ -266,10 +259,6 @@ pub mod workspace {
         Ok(())
     }
 
-    // Suppression d'un projet NON finalisé (créateur uniquement).
-    // Sécurité anti-dust : si le vault contient des lamports (ex: envoi malveillant
-    // pour bloquer la fermeture), on les rembourse intégralement au créateur AVANT
-    // de fermer. Le vault se retrouve à 0 et est purgé par le runtime — zéro déchet.
     pub fn close_project(ctx: Context<CloseProject>) -> Result<()> {
         let project = &ctx.accounts.project;
         require!(
@@ -277,7 +266,6 @@ pub mod workspace {
             ErrorCode::AlreadyFinalized
         );
 
-        // Remboursement du vault au créateur (anti-griefing / anti-dust)
         let vault_lamports = ctx.accounts.vault.lamports();
         if vault_lamports > 0 {
             let project_key = ctx.accounts.project.key();
@@ -297,38 +285,6 @@ pub mod workspace {
                 vault_lamports,
             )?;
         }
-
-               // `close = creator` dans le struct ci-dessous s'occupe de :
-        // fermer le compte Project + rendre sa rent au créateur.
-        Ok(())
-    }
-
-    // Retrait d'un membre non encore approuvé (créateur uniquement).
-    pub fn remove_member(ctx: Context<RemoveMember>, member_wallet: Pubkey) -> Result<()> {
-        let project = &mut ctx.accounts.project;
-
-        require!(
-            project.status == ProjectStatus::Open,
-            ErrorCode::AlreadyFinalized
-        );
-
-        require!(
-            member_wallet != project.creator,
-            ErrorCode::CannotRemoveCreator
-        );
-
-        let index = project
-            .members
-            .iter()
-            .position(|m| m.wallet == member_wallet)
-            .ok_or(ErrorCode::MemberNotFound)?;
-
-        require!(
-            !project.members[index].approved,
-            ErrorCode::MemberAlreadyApproved
-        );
-
-        project.members.remove(index);
 
         Ok(())
     }
@@ -439,6 +395,19 @@ pub struct AddMember<'info> {
 }
 
 #[derive(Accounts)]
+pub struct RemoveMember<'info> {
+    #[account(
+        mut,
+        seeds = [b"project", project.creator.as_ref(), project.project_id.as_bytes()],
+        bump = project.bump,
+        has_one = creator @ ErrorCode::Unauthorized,
+    )]
+    pub project: Account<'info, Project>,
+
+    pub creator: Signer<'info>,
+}
+
+#[derive(Accounts)]
 pub struct Approve<'info> {
     #[account(
         mut,
@@ -531,21 +500,6 @@ pub struct CloseProject<'info> {
 
     pub system_program: Program<'info, System>,
 }
-
-// ⬇️ NOUVEAU
-#[derive(Accounts)]
-pub struct RemoveMember<'info> {
-    #[account(
-        mut,
-        seeds = [b"project", project.creator.as_ref(), project.project_id.as_bytes()],
-        bump = project.bump,
-        has_one = creator @ ErrorCode::Unauthorized,
-    )]
-    pub project: Account<'info, Project>,
-
-    pub creator: Signer<'info>,
-}
-// ⬆️ NOUVEAU
 
 #[error_code]
 pub enum ErrorCode {
