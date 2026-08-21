@@ -1,6 +1,6 @@
 import { PublicKey } from '@solana/web3.js';
 
-export const PROGRAM_ID = new PublicKey('266V7Jct9EVWPeHscDwBpL13251EMUyak7WR9QiT59kQ');
+export const PROGRAM_ID = new PublicKey('9quyDwntXDBhNhTmrfCf7xEXVFaxYMB83BwPEUeqVoUJ');
 
 // ═══ RPC avec fallback — Helius (dédié) → Ankr → Solana officiel ═══
 // Helius = node unique, pas de load balancer → fix "Blockhash not found"
