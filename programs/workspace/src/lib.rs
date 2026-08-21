@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_lang::system_program::{transfer, Transfer};
 
-declare_id!("266V7Jct9EVWPeHscDwBpL13251EMUyak7WR9QiT59kQ");
+declare_id!("9quyDwntXDBhNhTmrfCf7xEXVFaxYMB83BwPEUeqVoUJ");
 
 pub const PROTOCOL_FEE_BPS: u16 = 200; // 2%
 pub const TOTAL_BPS: u16 = 10000;

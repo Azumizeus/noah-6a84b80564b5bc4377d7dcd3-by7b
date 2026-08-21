@@ -5,7 +5,7 @@
  * IDL can be found at `target/idl/workspace.json`.
  */
 export type Workspace = {
-  "address": "266V7Jct9EVWPeHscDwBpL13251EMUyak7WR9QiT59kQ",
+  "address": "9quyDwntXDBhNhTmrfCf7xEXVFaxYMB83BwPEUeqVoUJ",
   "metadata": {
     "name": "workspace",
     "version": "0.1.0",
@@ -174,6 +174,7 @@ export type Workspace = {
         },
         {
           "name": "vault",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -200,6 +201,10 @@ export type Workspace = {
           "relations": [
             "project"
           ]
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": []
@@ -547,6 +552,64 @@ export type Workspace = {
           "type": "u16"
         }
       ]
+    },
+    {
+      "name": "removeMember",
+      "discriminator": [
+        171,
+        57,
+        231,
+        150,
+        167,
+        128,
+        18,
+        55
+      ],
+      "accounts": [
+        {
+          "name": "project",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  106,
+                  101,
+                  99,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "project.creator",
+                "account": "project"
+              },
+              {
+                "kind": "account",
+                "path": "project.project_id",
+                "account": "project"
+              }
+            ]
+          }
+        },
+        {
+          "name": "creator",
+          "signer": true,
+          "relations": [
+            "project"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "memberWallet",
+          "type": "pubkey"
+        }
+      ]
     }
   ],
   "accounts": [
@@ -670,8 +733,18 @@ export type Workspace = {
     },
     {
       "code": 6018,
-      "name": "vaultNotEmpty",
-      "msg": "Vault must be empty before closing the project"
+      "name": "cannotRemoveCreator",
+      "msg": "Cannot remove the project creator"
+    },
+    {
+      "code": 6019,
+      "name": "memberNotFound",
+      "msg": "Member not found"
+    },
+    {
+      "code": 6020,
+      "name": "memberAlreadyApproved",
+      "msg": "Cannot remove a member who already approved"
     }
   ],
   "types": [
