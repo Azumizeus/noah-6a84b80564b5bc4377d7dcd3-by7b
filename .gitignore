@@ -22,3 +22,9 @@ target/
 !target/idl/
 !target/deploy/*.so
 !target/deploy/*-keypair.json
+<<<<<<< HEAD
+=======
+wallet.json
+archive/wallets/
+supabase/.temp/
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3

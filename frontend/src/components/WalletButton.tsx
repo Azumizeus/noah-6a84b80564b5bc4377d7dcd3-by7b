@@ -1,6 +1,10 @@
 // src/components/WalletButton.tsx
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+<<<<<<< HEAD
+=======
+import { useLanguage } from '../lib/i18n/LanguageContext';
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 
 type WalletButtonProps = {
   connected: boolean;
@@ -25,6 +29,10 @@ export function WalletButton({
   onConnect,
   onDisconnect,
 }: WalletButtonProps) {
+<<<<<<< HEAD
+=======
+  const { t } = useLanguage();
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const prefersReduced = useReducedMotion();
@@ -54,19 +62,31 @@ export function WalletButton({
         type="button"
         onClick={onConnect}
         disabled={connecting}
+<<<<<<< HEAD
         aria-label="Connecter un portefeuille Solana"
+=======
+        aria-label={t('walletButton.connectAria')}
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
         aria-busy={connecting}
         className="btn-primary"
       >
         {connecting ? (
           <>
             <Spinner />
+<<<<<<< HEAD
             <span>Connexion…</span>
+=======
+            <span>{t('walletButton.connecting')}</span>
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
           </>
         ) : (
           <>
             <WalletIcon />
+<<<<<<< HEAD
             <span>Connect Wallet</span>
+=======
+            <span>{t('walletButton.connect')}</span>
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
           </>
         )}
       </button>
@@ -85,7 +105,11 @@ export function WalletButton({
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={open}
+<<<<<<< HEAD
         aria-label={`Portefeuille connecté : ${address ?? ''}. Ouvrir le menu.`}
+=======
+        aria-label={t('walletButton.menuAria', { address: address ?? '' })}
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
         className="glass-panel glass-panel-hover flex min-h-[44px] items-center gap-2.5 rounded-xl px-3 py-2"
       >
         <span className="relative flex h-2 w-2" aria-hidden="true">
@@ -108,7 +132,11 @@ export function WalletButton({
             className="glass-panel absolute right-0 top-[calc(100%+8px)] z-50 w-64 p-2"
           >
             <div className="px-3 py-2">
+<<<<<<< HEAD
               <p className="text-xs uppercase tracking-wider text-ink-400">Solde</p>
+=======
+              <p className="text-xs uppercase tracking-wider text-ink-400">{t('walletButton.balance')}</p>
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
               <p className="mt-1 font-mono text-lg tabular-nums text-white">
                 {balance != null ? balance.toFixed(4) : '0.0000'}{' '}
                 <span className="text-accent-violet">SOL</span>
@@ -122,7 +150,11 @@ export function WalletButton({
               role="menuitem"
               className="flex h-11 items-center gap-2 rounded-lg px-3 text-sm text-ink-200 hover:bg-violet-500/10 hover:text-white"
             >
+<<<<<<< HEAD
               <ExternalLinkIcon /> Voir sur Solscan
+=======
+              <ExternalLinkIcon /> {t('walletButton.viewSolscan')}
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
             </a>
             <button
               type="button"
@@ -133,7 +165,11 @@ export function WalletButton({
               }}
               className="flex h-11 w-full items-center gap-2 rounded-lg px-3 text-sm text-gold-400 hover:bg-gold/10"
             >
+<<<<<<< HEAD
               <DisconnectIcon /> Déconnecter
+=======
+              <DisconnectIcon /> {t('walletButton.disconnect')}
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
             </button>
           </motion.div>
         )}

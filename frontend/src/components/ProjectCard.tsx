@@ -3,7 +3,11 @@ import { PublicKey } from '@solana/web3.js';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { approve, finalize, fund, distribute } from '../lib/anchor';
 import { useAnchorProgram } from '../hooks/useProjects';
+<<<<<<< HEAD
 import { parseTxError, formatSol, getVaultBalance } from '../lib/pacts';
+=======
+import { parseTxError, formatSol, getVaultBalance, explorerTxUrl } from '../lib/pacts';
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 import { BN } from '@coral-xyz/anchor';
 import AddMemberModal from './AddMemberModal';
 
@@ -19,6 +23,10 @@ export default function ProjectCard({ project, projectPda, onUpdate }: Props) {
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+<<<<<<< HEAD
+=======
+  const [successSig, setSuccessSig] = useState<string | null>(null);
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
   const [showAddMember, setShowAddMember] = useState(false);
 
   const isCreator = publicKey && project.creator.equals(publicKey);
@@ -34,6 +42,7 @@ export default function ProjectCard({ project, projectPda, onUpdate }: Props) {
     setLoading(action);
     setError(null);
     setSuccess(null);
+<<<<<<< HEAD
     try {
       const result = await fn();
       setSuccess(`${action} réussi !`);
@@ -41,6 +50,17 @@ export default function ProjectCard({ project, projectPda, onUpdate }: Props) {
         onUpdate();
         setSuccess(null);
       }, 2000);
+=======
+    setSuccessSig(null);
+    try {
+      // fn() renvoie la signature de transaction (string) pour approve/finalize/fund/distribute.
+      // On la garde affichée avec le lien Explorer — on ne l'efface plus automatiquement,
+      // sinon le lien disparaît avant que l'utilisateur ait pu cliquer dessus.
+      const sig: string = await fn();
+      setSuccess(`${action} réussi !`);
+      if (typeof sig === 'string') setSuccessSig(sig);
+      onUpdate();
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
     } catch (e: any) {
       setError(parseTxError(e));
     } finally {
@@ -129,7 +149,29 @@ export default function ProjectCard({ project, projectPda, onUpdate }: Props) {
         )}
         {success && (
           <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3 text-sm text-green-400 mb-4">
+<<<<<<< HEAD
             {success}
+=======
+            <div className="flex items-center justify-between gap-2">
+              <span>✅ {success}</span>
+              <button
+                onClick={() => { setSuccess(null); setSuccessSig(null); }}
+                className="text-xs text-green-300 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+            {successSig && (
+              <a
+                href={explorerTxUrl(successSig)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block mt-1 text-[11px] text-green-300 underline underline-offset-2 hover:opacity-80"
+              >
+                Voir la transaction sur Solana Explorer : {successSig.slice(0, 8)}… ↗
+              </a>
+            )}
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
           </div>
         )}
 
@@ -174,6 +216,7 @@ export default function ProjectCard({ project, projectPda, onUpdate }: Props) {
               >
                 {loading === 'Fund' ? 'Funding...' : 'Fund'}
               </button>
+<<<<<<< HEAD
               <button
                 onClick={handleDistribute}
                 disabled={loading !== null || project.vaultBalance === 0}
@@ -181,6 +224,17 @@ export default function ProjectCard({ project, projectPda, onUpdate }: Props) {
               >
                 {loading === 'Distribute' ? 'Distribution...' : `Distribute ${formatSol(project.vaultBalance)} SOL`}
               </button>
+=======
+              {isCreator && (
+                <button
+                  onClick={handleDistribute}
+                  disabled={loading !== null || project.vaultBalance === 0}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg py-2 text-sm font-medium transition disabled:opacity-50"
+                >
+                  {loading === 'Distribute' ? 'Distribution...' : `Distribute ${formatSol(project.vaultBalance)} SOL`}
+                </button>
+              )}
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
             </>
           )}
         </div>
@@ -190,6 +244,10 @@ export default function ProjectCard({ project, projectPda, onUpdate }: Props) {
         <AddMemberModal
           projectPda={projectPda}
           projectTitle={project.title}
+<<<<<<< HEAD
+=======
+          existingMembers={project.members}
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
           onClose={() => setShowAddMember(false)}
           onSuccess={onUpdate}
         />

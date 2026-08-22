@@ -5,8 +5,15 @@ import {
   PublicKey,
   SystemProgram,
   Transaction,
+<<<<<<< HEAD
   VersionedTransaction,
   LAMPORTS_PER_SOL,
+=======
+  TransactionMessage,
+  VersionedTransaction,
+  LAMPORTS_PER_SOL,
+  ComputeBudgetProgram,
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 } from '@solana/web3.js';
 import idl from '../idl/buildpact.json';
 import { PROGRAM_ID, PROJECT_SEED, VAULT_SEED, RPC_ENDPOINT, getRpcEndpoint, rotateRpc, isRateLimitError } from './constants';
@@ -97,6 +104,25 @@ async function confirmBySignature(
   throw new Error("Timeout de confirmation. Vérifie la signature sur l'explorer devnet.");
 }
 
+<<<<<<< HEAD
+=======
+// ⚠️ Certains wallets mobiles (Phantom sur Seeker notamment) peuvent ne
+// JAMAIS résoudre la promesse de signTransaction/sendTransaction si leur pont
+// interne (estimation des frais, session MWA) se bloque — le popup reste
+// affiché indéfiniment côté utilisateur, et notre code reste bloqué sur le
+// `await` sans jamais atteindre le catch/retry. On force un timeout dur pour
+// pouvoir abandonner proprement et relancer une tentative fraîche.
+function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMsg: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(timeoutMsg)), ms);
+    promise.then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); reject(e); }
+    );
+  });
+}
+
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 async function buildAndSend(
   program: Program,
   txBuilder: any
@@ -104,22 +130,57 @@ async function buildAndSend(
   const provider = program.provider as AnchorProvider;
   const wallet = provider.wallet as any;
 
+<<<<<<< HEAD
   if (!wallet?.signTransaction || !wallet?.publicKey) {
     throw new Error('Wallet non connecté ou incapable de signer.');
   }
 
   const connection = new Connection(getRpcEndpoint(), 'confirmed');
+=======
+  if (!wallet?.publicKey || (!wallet?.sendTransaction && !wallet?.signTransaction)) {
+    throw new Error('Wallet non connecté ou incapable de signer.');
+  }
+
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
   let lastError: unknown = null;
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
+<<<<<<< HEAD
       // ① Construire la tx (pas de RPC, instantané)
       const tx: Transaction = await txBuilder.transaction();
       tx.feePayer = wallet.publicKey as PublicKey;
+=======
+      // ⚠️ BUG FIX : la connection doit être recréée à CHAQUE tentative, pas
+      // une seule fois avant la boucle. Avant ce fix, rotateRpc() (appelé
+      // plus bas quand isRateLimitError() détecte un 429) changeait bien
+      // l'endpoint retourné par getRpcEndpoint(), mais l'objet `connection`
+      // utilisé pour TOUTES les tentatives suivantes restait celui créé au
+      // tout début — donc la rotation ne servait jamais à rien dans le même
+      // appel, et un RPC saturé (devnet public sous charge, cas fréquent
+      // pendant le hackathon) faisait échouer les 3 tentatives sur le MÊME
+      // endpoint congestionné, redemandant une signature à chaque fois =
+      // effet "boucle infinie de signature" observé avec Backpack.
+      const connection = new Connection(getRpcEndpoint(), 'confirmed');
+
+      // ① Construire la tx via Anchor (pas de RPC, instantané) — on ne récupère
+      // que les instructions, on ne garde PAS l'objet Transaction legacy.
+      const rawTx: Transaction = await txBuilder.transaction();
+
+      // Compute budget ajouté nous-mêmes AVANT signature : empêche Phantom
+      // d'injecter ses propres instructions après coup (ce qui invaliderait
+      // une signature déjà obtenue sur mobile).
+      const instructions = [
+        ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }),
+        ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1 }),
+        ...rawTx.instructions,
+      ];
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 
       // ② Blockhash au DERNIER moment, juste avant la signature
       const { blockhash, lastValidBlockHeight } =
         await connection.getLatestBlockhash('confirmed');
+<<<<<<< HEAD
       tx.recentBlockhash = blockhash;
 
       // ③ Signature (attente humaine — le chrono tourne ici)
@@ -147,12 +208,73 @@ async function buildAndSend(
       });
 
       // ⑤ Confirmation par polling de signature (robuste)
+=======
+
+      // ⚠️ CRITIQUE : VersionedTransaction (v0), PAS Transaction legacy.
+      // Le code source officiel de @solana-mobile/wallet-adapter-mobile
+      // (adapter.ts, sendTransaction() ET signTransaction()) appelle
+      // `transaction.serialize()` sur la transaction AVANT qu'elle soit
+      // signée, pour l'envoyer au wallet. Sur une Transaction legacy,
+      // serialize() vérifie par défaut que toutes les signatures sont
+      // présentes et lève "Signature verification failed. Missing
+      // signature" — AVANT même que Seed Vault ait pu signer. C'est un bug
+      // confirmé de leur adapter sur les transactions legacy.
+      // VersionedTransaction.serialize() n'a pas ce garde-fou : elle
+      // sérialise sans exiger de signature complète, donc l'adapter ne
+      // plante plus. Solflare gère ça correctement en interne, d'où le
+      // fait qu'il marchait déjà sans ce fix.
+      const messageV0 = new TransactionMessage({
+        payerKey: wallet.publicKey as PublicKey,
+        recentBlockhash: blockhash,
+        instructions,
+      }).compileToV0Message();
+
+      const vtx = new VersionedTransaction(messageV0);
+
+      let sig: string;
+
+      const WALLET_TIMEOUT_MS = 45_000;
+      const timeoutMsg = "Le wallet n'a pas répondu à temps (45s). Réessaie — appuie plus vite sur Confirmer.";
+
+      if (typeof wallet.sendTransaction === 'function') {
+        sig = await withTimeout(
+          wallet.sendTransaction(vtx, connection, { skipPreflight: true, maxRetries: 5 }),
+          WALLET_TIMEOUT_MS,
+          timeoutMsg
+        );
+      } else {
+        // ═══ REPLI : wallets ne supportant que signTransaction (rare) ═══
+        const signed = (await withTimeout(
+          wallet.signTransaction(vtx),
+          WALLET_TIMEOUT_MS,
+          timeoutMsg
+        )) as VersionedTransaction;
+
+        const idx = signed.message.staticAccountKeys.findIndex((k) => k.equals(wallet.publicKey));
+        const mySig = idx >= 0 ? signed.signatures[idx] : null;
+        const isZeroed = !mySig || mySig.every((b) => b === 0);
+        if (isZeroed) {
+          throw new Error(
+            "Le wallet n'a pas signé la transaction (timeout Seed Vault/MWA probable). Réessaie."
+          );
+        }
+
+        const raw = signed.serialize();
+        sig = await connection.sendRawTransaction(raw, {
+          skipPreflight: true,
+          maxRetries: 5,
+        });
+      }
+
+      // ④ Confirmation par polling de signature (robuste)
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
       await confirmBySignature(connection, sig, lastValidBlockHeight);
 
       return sig;
     } catch (e: any) {
       lastError = e;
       const msg: string = e?.message ?? '';
+<<<<<<< HEAD
 
       if (msg.includes('User rejected') || e?.name === 'WalletSignTransactionError') {
         throw e;
@@ -160,6 +282,28 @@ async function buildAndSend(
       if (msg.includes("n'a pas signé la transaction")) {
         throw e;
       }
+=======
+      const lowerMsg = msg.toLowerCase();
+
+      // ═══ Cas DÉFINITIFS : jamais de retry (le refus était volontaire, ou
+      // pas de wallet du tout — retenter ne changera rien) ═══
+      const isFatal =
+        lowerMsg.includes('user rejected') ||
+        lowerMsg.includes('wallet non connecté') ||
+        lowerMsg.includes('rejected the request') ||
+        // ⚠️ Ajouté le 22/08 : une transaction REFUSÉE ON-CHAIN (require!() qui
+        // échoue côté programme, ex. InvalidParameter/6005) est déterministe —
+        // retenter avec un nouveau blockhash donnera exactement la même erreur.
+        // Avant ce fix, ça redemandait une signature à Phantom jusqu'à 3 fois
+        // de suite, chacune affichant l'avertissement "échec de la simulation"
+        // — donnant l'impression d'une boucle infinie pour un bug qui aurait dû
+        // s'afficher clairement dès la première tentative.
+        lowerMsg.includes('transaction échouée on-chain') ||
+        e?.name === 'WalletSignTransactionError' ||
+        e?.name === 'WalletNotConnectedError';
+
+      if (isFatal) throw e;
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 
       if (isRateLimitError(e)) {
         rotateRpc();
@@ -167,6 +311,7 @@ async function buildAndSend(
         continue;
       }
 
+<<<<<<< HEAD
       const retryable =
         msg.includes('Blockhash not found') ||
         msg.includes('blockhash') ||
@@ -177,6 +322,17 @@ async function buildAndSend(
         msg.includes('429');
 
       if (!retryable || attempt === MAX_RETRIES) throw e;
+=======
+      // ⚠️ Politique inversée : on RETENTE PAR DÉFAUT, sauf cas définitif
+      // ci-dessus. Les wallets mobiles (Phantom Android via MWA, Seed Vault)
+      // remontent des messages génériques et imprévisibles ("Unexpected error",
+      // coupures de pont WebView/MWA en plein milieu du round-trip) qu'aucune
+      // liste de mots-clés ne peut couvrir à l'avance. Comme chaque tentative
+      // repart avec un blockhash frais, retenter est sans risque de double
+      // dépense (la tx précédente, si elle n'a pas atteint le réseau, est
+      // simplement abandonnée).
+      if (attempt === MAX_RETRIES) throw e;
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 
       await new Promise((r) => setTimeout(r, 400 * attempt));
     }
@@ -224,6 +380,22 @@ export async function addMember(
   return buildAndSend(program, builder);
 }
 
+<<<<<<< HEAD
+=======
+export async function removeMember(
+  program: Program,
+  creator: PublicKey,
+  projectPda: PublicKey,
+  memberWallet: PublicKey
+) {
+  const builder = program.methods
+    .removeMember(memberWallet)
+    .accounts({ project: projectPda, creator });
+
+  return buildAndSend(program, builder);
+}
+
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 export async function approve(program: Program, member: PublicKey, projectPda: PublicKey) {
   const builder = program.methods
     .approve()

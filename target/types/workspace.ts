@@ -174,7 +174,10 @@ export type Workspace = {
         },
         {
           "name": "vault",
+<<<<<<< HEAD
           "writable": true,
+=======
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
           "pda": {
             "seeds": [
               {
@@ -201,10 +204,13 @@ export type Workspace = {
           "relations": [
             "project"
           ]
+<<<<<<< HEAD
         },
         {
           "name": "systemProgram",
           "address": "11111111111111111111111111111111"
+=======
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
         }
       ],
       "args": []
@@ -552,6 +558,7 @@ export type Workspace = {
           "type": "u16"
         }
       ]
+<<<<<<< HEAD
     },
     {
       "name": "removeMember",
@@ -610,6 +617,8 @@ export type Workspace = {
           "type": "pubkey"
         }
       ]
+=======
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
     }
   ],
   "accounts": [
@@ -733,6 +742,7 @@ export type Workspace = {
     },
     {
       "code": 6018,
+<<<<<<< HEAD
       "name": "cannotRemoveCreator",
       "msg": "Cannot remove the project creator"
     },
@@ -745,6 +755,10 @@ export type Workspace = {
       "code": 6020,
       "name": "memberAlreadyApproved",
       "msg": "Cannot remove a member who already approved"
+=======
+      "name": "vaultNotEmpty",
+      "msg": "Vault must be empty before closing the project"
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
     }
   ],
   "types": [

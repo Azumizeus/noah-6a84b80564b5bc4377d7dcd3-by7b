@@ -2,6 +2,11 @@
 import { motion, MotionConfig, useReducedMotion, type Variants } from 'framer-motion';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useHashRoute } from '../lib/router';
+<<<<<<< HEAD
+=======
+import { useLanguage } from '../lib/i18n/LanguageContext';
+import LanguageSwitch from './LanguageSwitch';
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 
 interface NavLink {
   label: string;
@@ -15,12 +20,28 @@ interface DashboardLayoutProps {
   navLinks?: NavLink[];
 }
 
+<<<<<<< HEAD
 const DEFAULT_LINKS: NavLink[] = [
   { label: 'Dashboard', href: '#/', active: true },
   { label: 'Pacts',     href: '#/pacts' },
   { label: 'Treasury',  href: '#/treasury' },
   { label: 'Docs',      href: '#/docs' },
 ];
+=======
+/** Construit les liens de nav traduits — appelé avec t() du contexte de langue courant. */
+function buildDefaultLinks(t: (key: string) => string): NavLink[] {
+  return [
+    { label: t('nav.dashboard'), href: '#/', active: true },
+    { label: t('nav.marketplace'), href: '#/marketplace' },
+    { label: t('nav.pacts'), href: '#/pacts' },
+    { label: t('nav.builders'), href: '#/builders' },
+    { label: t('nav.profile'), href: '#/profile' },
+    { label: t('nav.treasury'), href: '#/treasury' },
+    { label: t('nav.docs'), href: '#/docs' },
+    { label: t('nav.about'), href: '#/about' },
+  ];
+}
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 
 // Variants Framer — conteneur staggeré 0.08s, enfant fade-in-up 12px
 const containerVariants: Variants = {
@@ -52,11 +73,20 @@ export function FadeInUp({ children, className }: { children: ReactNode; classNa
 export function DashboardLayout({
   children,
   walletSlot,
+<<<<<<< HEAD
   navLinks = DEFAULT_LINKS,
 }: DashboardLayoutProps) {
   const prefersReduced = useReducedMotion();
   const route = useHashRoute();
   const linksWithActive = navLinks.map((l) => ({ ...l, active: l.href === `#${route}` }));
+=======
+  navLinks,
+}: DashboardLayoutProps) {
+  const prefersReduced = useReducedMotion();
+  const route = useHashRoute();
+  const { t } = useLanguage();
+  const linksWithActive = (navLinks ?? buildDefaultLinks(t)).map((l) => ({ ...l, active: l.href === `#${route}` }));
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // Ferme le menu quand la route change (tap sur un lien)
@@ -109,12 +139,17 @@ export function DashboardLayout({
           className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50
                      focus:rounded-lg focus:bg-base-700 focus:px-4 focus:py-2 focus:text-white"
         >
+<<<<<<< HEAD
           Aller au contenu principal
+=======
+          {t('nav.skipToContent')}
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
         </a>
 
         <div className="relative z-10 mx-auto w-full max-w-[1200px] px-6 sm:px-8 lg:px-8">
           {/* En-tête — sticky safe, h-16 cohérent */}
           <header className="flex h-16 items-center justify-between gap-4 py-4">
+<<<<<<< HEAD
             <a
               href="#/"
               className="flex items-center gap-2.5 rounded-xl"
@@ -128,6 +163,27 @@ export function DashboardLayout({
 
             {/* Nav desktop — visible ≥768px */}
             <nav aria-label="Navigation principale" className="hidden md:block">
+=======
+            <div className="flex items-center gap-2.5">
+              {/* Icône = accueil marketing (toujours la landing, même connecté).
+                  Texte "BuildPact" = dashboard (racine '/', qui affiche le
+                  Dashboard une fois connecté) — 2 destinations distinctes au
+                  lieu d'un seul lien qui faisait doublon. */}
+              <a href="#/home" className="rounded-xl" aria-label={t('nav.homeAria')}>
+                <LogoMark />
+              </a>
+              <a
+                href="#/"
+                className="font-sans text-base font-semibold tracking-tight text-white rounded-xl"
+                aria-label={t('nav.dashboardAria')}
+              >
+                Build<span className="text-accent-violet">Pact</span>
+              </a>
+            </div>
+
+            {/* Nav desktop — visible ≥768px */}
+            <nav aria-label={t('nav.mainNav')} className="hidden md:block">
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
               <ul className="flex items-center gap-1">
                 {linksWithActive.map((l) => (
                   <li key={l.href}>
@@ -149,12 +205,20 @@ export function DashboardLayout({
             </nav>
 
             <div className="flex items-center gap-2">
+<<<<<<< HEAD
+=======
+              <span className="hidden sm:block"><LanguageSwitch compact /></span>
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
               {walletSlot}
 
               {/* Bouton hamburger — mobile only */}
               <button
                 type="button"
+<<<<<<< HEAD
                 aria-label={mobileOpen ? 'Fermer le menu' : 'Ouvrir le menu'}
+=======
+                aria-label={mobileOpen ? t('nav.closeMenu') : t('nav.openMenu')}
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
                 aria-expanded={mobileOpen}
                 onClick={() => setMobileOpen((v) => !v)}
                 className="inline-flex h-11 w-11 items-center justify-center rounded-lg
@@ -178,7 +242,11 @@ export function DashboardLayout({
 
           {/* Menu mobile — visible <768px */}
           {mobileOpen && (
+<<<<<<< HEAD
             <nav aria-label="Navigation mobile" className="md:hidden">
+=======
+            <nav aria-label={t('nav.mobileNav')} className="md:hidden">
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
               <motion.ul
                 initial={prefersReduced ? false : { opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -201,6 +269,12 @@ export function DashboardLayout({
                     </a>
                   </li>
                 ))}
+<<<<<<< HEAD
+=======
+                <li className="px-2 pt-1 sm:hidden">
+                  <LanguageSwitch />
+                </li>
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
               </motion.ul>
             </nav>
           )}
@@ -214,12 +288,21 @@ export function DashboardLayout({
             {children}
           </motion.main>
 
+<<<<<<< HEAD
           <footer className="border-t border-violet-500/10 py-6 text-xs text-ink-500">
             <div className="flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center">
               <p>© {new Date().getFullYear()} BuildPact Protocol · Devnet</p>
               <p className="font-mono">
                 Built on <span className="text-accent-violet">Solana</span> ·{' '}
                 <span className="text-accent-gold">Unaudited — Devnet only</span>
+=======
+          <footer className="border-t border-violet-500/10 py-6 text-xs text-ink-400">
+            <div className="flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center">
+              <p>© {new Date().getFullYear()} {t('footer.protocol')}</p>
+              <p className="font-mono">
+                {t('footer.builtOn')} <span className="text-accent-violet">Solana</span> ·{' '}
+                <span className="text-accent-gold">{t('footer.unaudited')}</span>
+>>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
               </p>
             </div>
           </footer>
