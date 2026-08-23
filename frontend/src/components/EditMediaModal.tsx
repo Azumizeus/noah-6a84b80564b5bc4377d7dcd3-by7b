@@ -6,7 +6,7 @@
 // on-chain, donc pas de wallet à signer ici.
 // ═══════════════════════════════════════════════════════════════════
 import { useState } from 'react';
-import { uploadProjectMedia, setProjectVideo, validateVideoUrl } from '../lib/media';
+import { uploadProjectMedia, setProjectVideo, validateVideoUrl, setProjectAbout, validateAboutText } from '../lib/media';
 import MediaPicker from './MediaPicker';
 import { useLanguage } from '../lib/i18n/LanguageContext';
 
@@ -16,6 +16,7 @@ interface Props {
   currentLogoUrl?: string | null;
   currentBannerUrl?: string | null;
   currentVideoUrl?: string | null;
+  currentAboutText?: string | null;
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -26,6 +27,7 @@ export default function EditMediaModal({
   currentLogoUrl,
   currentBannerUrl,
   currentVideoUrl,
+  currentAboutText,
   onClose,
   onSuccess,
 }: Props) {
@@ -33,20 +35,23 @@ export default function EditMediaModal({
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [bannerFile, setBannerFile] = useState<File | null>(null);
   const [videoUrl, setVideoUrl] = useState(currentVideoUrl ?? '');
+  const [aboutText, setAboutText] = useState(currentAboutText ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
   const videoChanged = videoUrl.trim() !== (currentVideoUrl ?? '').trim();
   const videoError = videoChanged ? validateVideoUrl(videoUrl) : null;
+  const aboutChanged = aboutText.trim() !== (currentAboutText ?? '').trim();
+  const aboutError = aboutChanged ? validateAboutText(aboutText) : null;
 
   const handleSave = async () => {
-    if (!logoFile && !bannerFile && !videoChanged) {
+    if (!logoFile && !bannerFile && !videoChanged && !aboutChanged) {
       onClose();
       return;
     }
-    if (videoError) {
-      setError(videoError);
+    if (videoError || aboutError) {
+      setError(videoError || aboutError);
       return;
     }
     setSaving(true);
@@ -64,6 +69,10 @@ export default function EditMediaModal({
     if (videoChanged) {
       const r = await setProjectVideo(projectPda, videoUrl);
       if ('error' in r) failures.push(`Vidéo : ${r.error}`);
+    }
+    if (aboutChanged) {
+      const r = await setProjectAbout(projectPda, aboutText);
+      if ('error' in r) failures.push(`À propos : ${r.error}`);
     }
 
     setSaving(false);
@@ -122,6 +131,27 @@ export default function EditMediaModal({
               <p className="mt-1 text-[11px] text-red-400">{videoError}</p>
             )}
           </div>
+
+          <div>
+            <label htmlFor="about-text" className="mb-1 block text-sm font-medium text-white">
+              À propos du projet (présentation longue)
+            </label>
+            <textarea
+              id="about-text"
+              value={aboutText}
+              onChange={(e) => setAboutText(e.target.value)}
+              placeholder="Décris ton projet en détail : contexte, roadmap, pourquoi investir..."
+              maxLength={4000}
+              rows={6}
+              className="w-full resize-y rounded-lg border border-purple-500/30 bg-black/50 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-purple-500 focus:outline-none"
+            />
+            <p className="mt-1 text-[11px] text-gray-500">
+              {aboutText.length}/4000 caractères — modifiable à tout moment, même après finalisation.
+            </p>
+            {aboutChanged && aboutError && (
+              <p className="mt-1 text-[11px] text-red-400">{aboutError}</p>
+            )}
+          </div>
         </div>
 
         {error && (
@@ -148,7 +178,7 @@ export default function EditMediaModal({
             <button
               type="button"
               onClick={handleSave}
-              disabled={saving || (!logoFile && !bannerFile && !videoChanged)}
+              disabled={saving || (!logoFile && !bannerFile && !videoChanged && !aboutChanged)}
               className="flex-1 bg-purple-600 hover:bg-purple-500 text-white rounded-lg py-2 text-sm font-medium disabled:opacity-50"
             >
               {saving ? t('editMedia.saving') : t('editMedia.save')}

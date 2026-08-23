@@ -31,6 +31,7 @@ export interface ProjectMedia {
   logoUrl: string | null;
   bannerUrl: string | null;
   pitchVideoUrl: string | null;
+  aboutText: string | null;
 }
 
 const BUCKET = 'project-media';
@@ -109,6 +110,7 @@ function fromRemote(row: Record<string, unknown>): ProjectMedia {
     logoUrl: (row.logo_url as string | null) ?? null,
     bannerUrl: (row.banner_url as string | null) ?? null,
     pitchVideoUrl: (row.pitch_video_url as string | null) ?? null,
+    aboutText: (row.about_text as string | null) ?? null,
   };
 }
 
@@ -198,6 +200,51 @@ export async function setProjectVideo(
   if (error) {
     console.warn('[media] video upsert error:', error.message);
     return { error: tr('errors.videoSaveFailed') };
+  }
+  return { ok: true };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// "À propos" — présentation longue, éditable à tout moment (même après
+// finalisation du pact). Contrairement à la description on-chain (verrouillée
+// pour de bon à la création — garantie de confiance pour les backers), ce
+// texte off-chain permet au founder d'enrichir sa présentation sans jamais
+// pouvoir réécrire la promesse initiale. Colonne about_text sur project_media,
+// contrainte CHECK côté DB alignée sur MAX_ABOUT_LEN.
+// ═══════════════════════════════════════════════════════════════════
+const MAX_ABOUT_LEN = 4000;
+
+/** Message d'erreur si le texte "À propos" dépasse la limite, sinon null. */
+export function validateAboutText(text: string): string | null {
+  if (text.length > MAX_ABOUT_LEN) {
+    return `Texte trop long (max ${MAX_ABOUT_LEN} caractères, actuellement ${text.length}).`;
+  }
+  return null;
+}
+
+/** Enregistre (ou efface, si texte vide) la présentation longue "À propos" d'un projet. */
+export async function setProjectAbout(
+  projectPda: string,
+  text: string
+): Promise<{ ok: true } | { error: string }> {
+  if (!supabase) return { error: tr('errors.notConfigured') };
+  const invalid = validateAboutText(text);
+  if (invalid) return { error: invalid };
+
+  const { error } = await supabase
+    .from('project_media')
+    .upsert(
+      {
+        project_pda: projectPda,
+        about_text: text.trim() || null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'project_pda' }
+    );
+
+  if (error) {
+    console.warn('[media] about upsert error:', error.message);
+    return { error: 'Erreur lors de la sauvegarde du texte.' };
   }
   return { ok: true };
 }
