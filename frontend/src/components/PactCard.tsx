@@ -32,7 +32,22 @@ interface Props {
   busyAction: PactAction | null;
   onFund: (pact: Pact, amount: number) => void;
   onFinalize: (pact: Pact) => void;
-  /** @deprecated — distribute géré en interne (reçu signé). Prop conservée pour compat parent, ignorée. */
+  /** @deprecated — distribute géré en interne (reçu signé). Prop conservée pour 🧭 Vision & feuille de route de Nexus Code
+
+Le nom "Health" n'est pas anodin : Nexus Code veille sur la santé de ton code — reviews, corrections, refactors — comme une jauge de vie qu'on maintient à 100%.
+
+Nexus Code est un agent de codage IA hybride qui fusionne trois forces complémentaires : l'interface terminal riche d'OpenCode (planification, itération multi-session), le moteur d'exécution optimisé d'Unsloth (performance, fine-tuning local), et la simplicité d'installation d'Ollama (bibliothèque de modèles prête à l'emploi).
+
+Objectif : un agent qui tourne 100% en local, s'adapte à vos patterns de code, et peut même s'auto-entraîner sur votre codebase — sans jamais envoyer votre code vers le cloud.
+
+Feuille de route en 4 phases (~12-18 mois) :
+
+Phase 1 (2-3 mois) — Prototype : terminal unifié OpenCode+Ollama, boucle Plan/Build avec undo/redo, intégration LSP basique.
+Phase 2 (3-4 mois) — Formation intégrée : fine-tuning depuis l'interface, datasets auto-générés depuis la codebase.
+Phase 3 (4-6 mois) — Agent intelligent : planification multi-niveaux, apprentissage continu, observabilité temps réel.
+Phase 4 (6-12 mois) — Écosystème : marketplace d'agents spécialisés, API complète.
+
+On est au stade architecture/conception — les briques techniques existent déjà séparément, la fusion reste à construire. On recrute pour attaquer la Phase 1.compat parent, ignorée. */
   onDistribute?: (pact: Pact) => void;
   /** Ferme le bandeau Fund/Finalize du haut au démarrage d'une distribution,
    *  pour éviter qu'un vieux message reste affiché au-dessus du nouveau reçu. */
