@@ -17,6 +17,17 @@ interface Props {
   onApply: (pact: ChainPact) => void;
   media?: ProjectMedia;
 }
+const SHARE_COLORS = ['#8B5CF6', '#34D399', '#F59E0B', '#EC4899', '#3B82F6', '#EF4444'];
+
+// Dégradé de secours déterministe (même projet = même dégradé à chaque rendu)
+// quand aucune bannière n'a été uploadée — évite les cards "vides".
+function fallbackBannerStyle(seed: string): React.CSSProperties {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  const hue1 = hash % 360;
+  const hue2 = (hue1 + 60 + ((hash >> 8) % 60)) % 360;
+  return { background: `linear-gradient(135deg, hsl(${hue1} 70% 22%), hsl(${hue2} 70% 14%))` };
+}
 
 export function MarketplaceCard({ pact, onApply, media }: Props) {
   const { publicKey } = useWallet();
@@ -34,9 +45,19 @@ export function MarketplaceCard({ pact, onApply, media }: Props) {
 
   return (
     <article className="glass-panel flex h-full flex-col overflow-hidden rounded-2xl border border-white/5 p-6 transition-all hover:border-accent-violet/20">
-      {media?.bannerUrl && (
+      {media?.bannerUrl ? (
         <div className="-mx-6 -mt-6 mb-4 h-24 w-[calc(100%+3rem)]">
           <img src={media.bannerUrl} alt="" className="h-full w-full object-cover" />
+        </div>
+      ) : (
+        <div
+          className="-mx-6 -mt-6 mb-4 flex h-24 w-[calc(100%+3rem)] items-center justify-center"
+          style={fallbackBannerStyle(pact.pda.toBase58())}
+          aria-hidden="true"
+        >
+          <span className="font-mono text-2xl font-bold text-white/20">
+            {pact.title.charAt(0).toUpperCase()}
+          </span>
         </div>
       )}
 
@@ -126,6 +147,23 @@ export function MarketplaceCard({ pact, onApply, media }: Props) {
           </button>
         )}
       </div>
+                {pact.members.length > 0 && (
+            <div className="mb-4">
+              <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-white/5">
+                {pact.members.map((m, i) => (
+                  <div
+                    key={m.wallet.toBase58()}
+                    style={{ width: `${m.shareBps / 100}%`, background: SHARE_COLORS[i % SHARE_COLORS.length] }}
+                    title={`${formatAddress(m.wallet.toBase58())} · ${(m.shareBps / 100).toFixed(1)}%`}
+                  />
+                ))}
+              </div>
+              <p className="mt-1 text-[10px] text-ink-500">
+                {pact.members.slice(0, 3).map((m) => `${formatAddress(m.wallet.toBase58())} ${(m.shareBps / 100).toFixed(0)}%`).join(' · ')}
+                {pact.members.length > 3 ? '…' : ''}
+              </p>
+            </div>
+          )}
     </article>
   );
 }
