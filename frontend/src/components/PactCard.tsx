@@ -11,6 +11,9 @@ import type { Pact, PactAction, DistributionReceipt } from '../types/pact';
 import type { ProjectMedia } from '../lib/media';
 import AddMemberModal from './AddMemberModal';
 import EditMediaModal from './EditMediaModal';
+import PactTimeline from './pact/PactTimeline';
+import OrbitalCapTable from './pact/OrbitalCapTable';
+import VaultShareGauge from './pact/VaultShareGauge';
 import { useLanguage } from '../lib/i18n/LanguageContext';
 
 interface Props {
@@ -219,6 +222,7 @@ export default function PactCard({
         : !allApproved
           ? t('pactCard.approvalsCount', { done: approvedCount, total: pact.members.length })
           : '';
+            const isDetailView = !showOpenSheetButton;
 
   return (
     <>
@@ -312,7 +316,11 @@ export default function PactCard({
             )}
           </div>
         </div>
-
+        {isDetailView && (
+          <div className="mb-4 border-t border-white/5 pt-4">
+            <PactTimeline pact={pact} hasReceipt={!!receipt} />
+          </div>
+        )}
         {/* Entrée principale vers la fiche (chat + vault) — avant, seul un
             petit lien "🔗 Partager" (pensé pour un tiers) y menait, ce qui le
             rendait invisible comme point d'accès pour SOI-même : le seul
@@ -396,7 +404,16 @@ export default function PactCard({
             </div>
           </div>
         )}
-
+        {isDetailView && pact.members.length > 0 && (
+          <div className="mt-4 grid grid-cols-1 gap-4 border-t border-white/5 pt-4 sm:grid-cols-2">
+            <OrbitalCapTable members={pact.members} creatorWallet={pact.creator.toBase58()} myWallet={myAddr} />
+            <VaultShareGauge
+              vaultBalanceSol={pact.vaultBalanceSol}
+              myShareBps={pact.myShareBps}
+              myClaimableSol={pact.myClaimableSol}
+            />
+          </div>
+        )}
         {walletConnected && (
           <div className="mt-6 space-y-3 border-t border-white/5 pt-4">
             {/* Phantom/Backpack font leur propre simulation de sécurité via LEUR
