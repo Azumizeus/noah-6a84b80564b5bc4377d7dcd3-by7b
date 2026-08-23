@@ -12,6 +12,15 @@ import type { ProjectMedia } from '../lib/media';
 import AddMemberModal from './AddMemberModal';
 import EditMediaModal from './EditMediaModal';
 import { parsePitch, stageBadgeLabel } from '../lib/pitch';
+
+// Dégradé de secours déterministe si pas de bannière uploadée (même logique que MarketplaceCard)
+function fallbackBannerStyle(seed: string): React.CSSProperties {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  const hue1 = hash % 360;
+  const hue2 = (hue1 + 60 + ((hash >> 8) % 60)) % 360;
+  return { background: `linear-gradient(135deg, hsl(${hue1} 70% 22%), hsl(${hue2} 70% 14%))` };
+}
 import PactTimeline from './pact/PactTimeline';
 import OrbitalCapTable from './pact/OrbitalCapTable';
 import VaultShareGauge from './pact/VaultShareGauge';
@@ -230,10 +239,24 @@ export default function PactCard({
     <>
       <article className="glass-panel group relative overflow-hidden rounded-2xl border border-white/5 p-6 transition-all hover:border-accent-violet/20">
         {/* Bannière — bleed jusqu'aux bords du card grâce à overflow-hidden sur <article> */}
-        {media?.bannerUrl && (
-          <div className="-mx-6 -mt-6 mb-4 h-28 w-[calc(100%+3rem)] sm:h-36">
-            <img src={media.bannerUrl} alt="" className="h-full w-full object-cover" />
+        {isDetailView ? (
+          <div className="-mx-6 -mt-6 mb-4 relative h-40 w-[calc(100%+3rem)] overflow-hidden sm:h-52">
+            {media?.bannerUrl ? (
+              <img src={media.bannerUrl} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <div className="h-full w-full" style={fallbackBannerStyle(pdaKey)} />
+            )}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
+            <h3 className="absolute inset-x-4 bottom-3 truncate font-sans text-2xl font-bold text-white drop-shadow-lg sm:inset-x-5 sm:text-3xl">
+              {pact.title}
+            </h3>
           </div>
+        ) : (
+          media?.bannerUrl && (
+            <div className="-mx-6 -mt-6 mb-4 h-28 w-[calc(100%+3rem)] sm:h-36">
+              <img src={media.bannerUrl} alt="" className="h-full w-full object-cover" />
+            </div>
+          )
         )}
 
         <div className="mb-4 flex items-start justify-between">
@@ -246,10 +269,12 @@ export default function PactCard({
               />
             )}
             <div>
-              <h3 className="font-sans text-lg font-semibold text-white">
-                {pact.title}
-              </h3>
-              <p className="mt-1 font-mono text-xs text-ink-400">
+              {!isDetailView && (
+                <h3 className="font-sans text-lg font-semibold text-white">
+                  {pact.title}
+                </h3>
+              )}
+              <p className={isDetailView ? 'font-mono text-xs text-ink-400' : 'mt-1 font-mono text-xs text-ink-400'}>
                 {t('pactCard.creatorLabel')} {formatAddress(pact.creator.toBase58())}
               </p>
               {(chatUnseen || vaultUnseen) && (
