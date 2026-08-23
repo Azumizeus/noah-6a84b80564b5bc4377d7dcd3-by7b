@@ -21,11 +21,6 @@ export function AppWalletButton() {
   }, [connection, publicKey]);
 
   const handleConnect = useCallback(() => setVisible(true), [setVisible]);
-<<<<<<< HEAD
-  const handleDisconnect = useCallback(() => {
-  void disconnect().finally(() => window.location.reload());
-}, [disconnect]);
-=======
 
   const handleDisconnect = useCallback(() => {
     // ⚠️ REVERT volontaire : on ne vide PLUS le cache d'autorisation MWA ici.
@@ -54,7 +49,6 @@ export function AppWalletButton() {
         window.location.reload();
       });
   }, [disconnect]);
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 
   return (
     <WalletButton

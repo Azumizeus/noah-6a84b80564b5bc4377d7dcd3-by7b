@@ -1,8 +1,6 @@
 -- ═══════════════════════════════════════════════════════
 -- BuildPact — Table des profils builders
 -- À exécuter dans Supabase SQL Editor
-<<<<<<< HEAD
-=======
 -- ⚠️ SÉCURITÉ : contrairement à project_media/pact_events/project_updates
 -- (MVP à écriture publique, risque assumé), un profil est lié à une IDENTITÉ
 -- de wallet — laisser n'importe qui écrire ici permettrait d'usurper le
@@ -12,7 +10,6 @@
 -- côté serveur avant d'utiliser la service_role key (qui bypass RLS par
 -- design chez Supabase). Si tu relances ce script après une version
 -- précédente plus permissive, les anciennes policies sont supprimées.
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 -- ═══════════════════════════════════════════════════════
 
 -- 1. TABLE
@@ -29,13 +26,9 @@ create table if not exists public.builder_profiles (
 
   -- Format base58 Solana (32-44 chars, alphabet sans 0/O/I/l)
   constraint wallet_format_chk
-<<<<<<< HEAD
-    check (wallet ~ '^[1-9A-HJ-NP-Za-km-z]{32,44}$')
-=======
     check (wallet ~ '^[1-9A-HJ-NP-Za-km-z]{32,44}$'),
   constraint display_name_len_chk check (char_length(display_name) <= 40),
   constraint bio_len_chk check (char_length(bio) <= 280)
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 );
 
 -- 2. updated_at automatique
@@ -55,26 +48,11 @@ create trigger trg_builder_profiles_updated
 alter table public.builder_profiles enable row level security;
 
 -- Lecture publique (annuaire de builders = public par design)
-<<<<<<< HEAD
-=======
 drop policy if exists "profiles_public_read" on public.builder_profiles;
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 create policy "profiles_public_read"
   on public.builder_profiles for select
   using (true);
 
-<<<<<<< HEAD
--- Écriture ouverte en MVP (voir note sécurité ci-dessous)
-create policy "profiles_public_insert"
-  on public.builder_profiles for insert
-  with check (true);
-
-create policy "profiles_public_update"
-  on public.builder_profiles for update
-  using (true) with check (true);
-
--- 4. Vérif — doit retourner 0 ligne sans erreur
-=======
 -- ⚠️ Anciennes policies d'écriture ouverte (versions précédentes de ce
 -- fichier) — supprimées explicitement. Ne PAS les recréer : l'écriture ne
 -- doit passer QUE par l'Edge Function (service_role, hors RLS).
@@ -147,5 +125,4 @@ values ('builder-avatars', 'builder-avatars', true)
 on conflict (id) do update set public = true;
 
 -- 5. Vérif — doit retourner 0 ligne sans erreur
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 select * from public.builder_profiles;

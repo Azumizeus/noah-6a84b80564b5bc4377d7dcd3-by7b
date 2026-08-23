@@ -5,15 +5,10 @@ import {
   PublicKey,
   SystemProgram,
   Transaction,
-<<<<<<< HEAD
-  VersionedTransaction,
-  LAMPORTS_PER_SOL,
-=======
   TransactionMessage,
   VersionedTransaction,
   LAMPORTS_PER_SOL,
   ComputeBudgetProgram,
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 } from '@solana/web3.js';
 import idl from '../idl/buildpact.json';
 import { PROGRAM_ID, PROJECT_SEED, VAULT_SEED, RPC_ENDPOINT, getRpcEndpoint, rotateRpc, isRateLimitError } from './constants';
@@ -104,8 +99,6 @@ async function confirmBySignature(
   throw new Error("Timeout de confirmation. Vérifie la signature sur l'explorer devnet.");
 }
 
-<<<<<<< HEAD
-=======
 // ⚠️ Certains wallets mobiles (Phantom sur Seeker notamment) peuvent ne
 // JAMAIS résoudre la promesse de signTransaction/sendTransaction si leur pont
 // interne (estimation des frais, session MWA) se bloque — le popup reste
@@ -122,7 +115,6 @@ function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMsg: string): Pr
   });
 }
 
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 async function buildAndSend(
   program: Program,
   txBuilder: any
@@ -130,27 +122,14 @@ async function buildAndSend(
   const provider = program.provider as AnchorProvider;
   const wallet = provider.wallet as any;
 
-<<<<<<< HEAD
-  if (!wallet?.signTransaction || !wallet?.publicKey) {
-    throw new Error('Wallet non connecté ou incapable de signer.');
-  }
-
-  const connection = new Connection(getRpcEndpoint(), 'confirmed');
-=======
   if (!wallet?.publicKey || (!wallet?.sendTransaction && !wallet?.signTransaction)) {
     throw new Error('Wallet non connecté ou incapable de signer.');
   }
 
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
   let lastError: unknown = null;
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-<<<<<<< HEAD
-      // ① Construire la tx (pas de RPC, instantané)
-      const tx: Transaction = await txBuilder.transaction();
-      tx.feePayer = wallet.publicKey as PublicKey;
-=======
       // ⚠️ BUG FIX : la connection doit être recréée à CHAQUE tentative, pas
       // une seule fois avant la boucle. Avant ce fix, rotateRpc() (appelé
       // plus bas quand isRateLimitError() détecte un 429) changeait bien
@@ -175,40 +154,10 @@ async function buildAndSend(
         ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1 }),
         ...rawTx.instructions,
       ];
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 
       // ② Blockhash au DERNIER moment, juste avant la signature
       const { blockhash, lastValidBlockHeight } =
         await connection.getLatestBlockhash('confirmed');
-<<<<<<< HEAD
-      tx.recentBlockhash = blockhash;
-
-      // ③ Signature (attente humaine — le chrono tourne ici)
-      const signed = (await wallet.signTransaction(tx)) as
-        | Transaction
-        | VersionedTransaction;
-
-      // ═══ GARDE-FOU MOBILE (Seed Vault / MWA) ═══
-      const mySig = (signed as Transaction).signatures?.find((s) =>
-        s.publicKey.equals(wallet.publicKey)
-      );
-      if (!mySig?.signature) {
-        throw new Error(
-          "Le wallet n'a pas signé la transaction. Sur mobile : déconnecte et reconnecte UN SEUL wallet, puis réessaie."
-        );
-      }
-      // ═══ FIN GARDE-FOU ═══
-
-      const raw = signed.serialize();
-
-      // ④ Envoi : skipPreflight dès le 1er essai pour gagner du temps
-      const sig = await connection.sendRawTransaction(raw, {
-        skipPreflight: true,
-        maxRetries: 5,
-      });
-
-      // ⑤ Confirmation par polling de signature (robuste)
-=======
 
       // ⚠️ CRITIQUE : VersionedTransaction (v0), PAS Transaction legacy.
       // Le code source officiel de @solana-mobile/wallet-adapter-mobile
@@ -267,22 +216,12 @@ async function buildAndSend(
       }
 
       // ④ Confirmation par polling de signature (robuste)
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
       await confirmBySignature(connection, sig, lastValidBlockHeight);
 
       return sig;
     } catch (e: any) {
       lastError = e;
       const msg: string = e?.message ?? '';
-<<<<<<< HEAD
-
-      if (msg.includes('User rejected') || e?.name === 'WalletSignTransactionError') {
-        throw e;
-      }
-      if (msg.includes("n'a pas signé la transaction")) {
-        throw e;
-      }
-=======
       const lowerMsg = msg.toLowerCase();
 
       // ═══ Cas DÉFINITIFS : jamais de retry (le refus était volontaire, ou
@@ -303,7 +242,6 @@ async function buildAndSend(
         e?.name === 'WalletNotConnectedError';
 
       if (isFatal) throw e;
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 
       if (isRateLimitError(e)) {
         rotateRpc();
@@ -311,18 +249,6 @@ async function buildAndSend(
         continue;
       }
 
-<<<<<<< HEAD
-      const retryable =
-        msg.includes('Blockhash not found') ||
-        msg.includes('blockhash') ||
-        msg.includes('block height exceeded') ||
-        msg.includes('was not found') ||
-        msg.includes('Transaction simulation failed') ||
-        msg.includes('Network request failed') ||
-        msg.includes('429');
-
-      if (!retryable || attempt === MAX_RETRIES) throw e;
-=======
       // ⚠️ Politique inversée : on RETENTE PAR DÉFAUT, sauf cas définitif
       // ci-dessus. Les wallets mobiles (Phantom Android via MWA, Seed Vault)
       // remontent des messages génériques et imprévisibles ("Unexpected error",
@@ -332,7 +258,6 @@ async function buildAndSend(
       // dépense (la tx précédente, si elle n'a pas atteint le réseau, est
       // simplement abandonnée).
       if (attempt === MAX_RETRIES) throw e;
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 
       await new Promise((r) => setTimeout(r, 400 * attempt));
     }
@@ -380,8 +305,6 @@ export async function addMember(
   return buildAndSend(program, builder);
 }
 
-<<<<<<< HEAD
-=======
 export async function removeMember(
   program: Program,
   creator: PublicKey,
@@ -395,7 +318,6 @@ export async function removeMember(
   return buildAndSend(program, builder);
 }
 
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 export async function approve(program: Program, member: PublicKey, projectPda: PublicKey) {
   const builder = program.methods
     .approve()

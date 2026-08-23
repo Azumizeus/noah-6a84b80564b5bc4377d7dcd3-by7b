@@ -168,10 +168,7 @@
         },
         {
           "name": "vault",
-<<<<<<< HEAD
           "writable": true,
-=======
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
           "pda": {
             "seeds": [
               {
@@ -198,13 +195,10 @@
           "relations": [
             "project"
           ]
-<<<<<<< HEAD
         },
         {
           "name": "system_program",
           "address": "11111111111111111111111111111111"
-=======
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
         }
       ],
       "args": []
@@ -552,7 +546,6 @@
           "type": "u16"
         }
       ]
-<<<<<<< HEAD
     },
     {
       "name": "remove_member",
@@ -611,8 +604,6 @@
           "type": "pubkey"
         }
       ]
-=======
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
     }
   ],
   "accounts": [
@@ -736,7 +727,6 @@
     },
     {
       "code": 6018,
-<<<<<<< HEAD
       "name": "CannotRemoveCreator",
       "msg": "Cannot remove the project creator"
     },
@@ -749,10 +739,11 @@
       "code": 6020,
       "name": "MemberAlreadyApproved",
       "msg": "Cannot remove a member who already approved"
-=======
-      "name": "VaultNotEmpty",
-      "msg": "Vault must be empty before closing the project"
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
+    },
+    {
+      "code": 6021,
+      "name": "InvalidProtocolWallet",
+      "msg": "protocol_wallet must match the locked BuildPact protocol wallet"
     }
   ],
   "types": [

@@ -1,15 +1,6 @@
 // src/lib/router.ts
 import { useEffect, useState } from 'react';
 
-<<<<<<< HEAD
-export type Route = '/' | '/pacts' | '/treasury' | '/docs';
-
-const VALID: Route[] = ['/', '/pacts', '/treasury', '/docs'];
-
-function readHash(): Route {
-  const raw = window.location.hash.replace(/^#/, '');
-  return (VALID as string[]).includes(raw) ? (raw as Route) : '/';
-=======
 export type Route = '/' | '/pacts' | '/marketplace' | '/treasury' | '/docs' | '/about' | '/profile' | '/home' | '/builders';
 
 const VALID: Route[] = ['/', '/pacts', '/marketplace', '/treasury', '/docs', '/about', '/profile', '/home', '/builders'];
@@ -23,7 +14,6 @@ function readHash(): Route {
   // uniquement le chemin, le paramètre est lu séparément (voir usePactsMineParam).
   const path = raw.split('?')[0];
   return (VALID as string[]).includes(path) ? (path as Route) : '/';
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 }
 
 export function useHashRoute(): Route {
@@ -37,8 +27,6 @@ export function useHashRoute(): Route {
 
   return route;
 }
-<<<<<<< HEAD
-=======
 
 // Format base58 Solana (32-44 caractères, alphabet sans 0/O/I/l), avec un
 // éventuel suffixe ?doc=<id> pour lier directement vers un document du vault
@@ -119,4 +107,3 @@ export function pactPublicUrl(pdaBase58: string): string {
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   return `${origin}/#/pact/${pdaBase58}`;
 }
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3

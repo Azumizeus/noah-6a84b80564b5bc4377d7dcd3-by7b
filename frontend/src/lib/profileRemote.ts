@@ -1,34 +1,6 @@
 // ═══════════════════════════════════════════════════════
 // BuildPact — Persistance distante des profils builders
 // Supabase (Postgres + RLS) — table builder_profiles
-<<<<<<< HEAD
-// ═══════════════════════════════════════════════════════
-import { createClient } from '@supabase/supabase-js';
-import type { BuilderProfile } from './profile';
-
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-
-export const isRemoteEnabled = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
-
-const supabase = isRemoteEnabled
-  ? createClient(SUPABASE_URL!, SUPABASE_ANON_KEY!)
-  : null;
-
-// ── Mapping local (BuilderProfile) ↔ SQL (builder_profiles) ──
-function toRemote(p: BuilderProfile) {
-  return {
-    wallet: p.wallet,
-    display_name: p.pseudo,
-    bio: p.bio,
-    roles: p.skills,          // on stocke les skills dans roles+skills
-    skills: p.skills,
-    links: p.links,
-    available: p.availability === 'open',
-    updated_at: new Date().toISOString(),
-  };
-}
-=======
 // ⚠️ L'ÉCRITURE passe OBLIGATOIREMENT par l'Edge Function `update-profile` :
 // un profil est lié à une identité de wallet, donc contrairement à
 // project_media/pact_events (MVP écriture ouverte assumée), on exige une
@@ -57,7 +29,6 @@ function tr(key: string, params?: Record<string, string | number>): string {
 const UPDATE_PROFILE_URL = SUPABASE_PROJECT_URL
   ? `${SUPABASE_PROJECT_URL}/functions/v1/update-profile`
   : '';
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 
 function fromRemote(row: Record<string, unknown>): BuilderProfile {
   return {
@@ -65,22 +36,14 @@ function fromRemote(row: Record<string, unknown>): BuilderProfile {
     pseudo: (row.display_name as string) ?? '',
     bio: (row.bio as string) ?? '',
     skills: (row.skills as string[]) ?? [],
-<<<<<<< HEAD
-    links: (row.links as Record<string, string>) ?? {},
-    availability: row.available ? 'open' : 'busy',
-=======
     skillLevels: (row.skill_levels as Record<string, SkillLevel>) ?? {},
     links: (row.links as Record<string, string>) ?? {},
     availability: row.available ? 'open' : 'busy',
     avatarUrl: (row.avatar_url as string | null) ?? null,
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
     updatedAt: row.updated_at ? new Date(row.updated_at as string).getTime() : 0,
   };
 }
 
-<<<<<<< HEAD
-/** Charge le profil d'un wallet (null si inexistant ou erreur) */
-=======
 /** Charge plusieurs profils d'un coup (wallet → profil) — pour résoudre pseudo/avatar
  *  dans le chat ou le fil d'avancement sans faire un fetch par message. */
 export async function fetchProfilesByWallets(wallets: string[]): Promise<Map<string, BuilderProfile>> {
@@ -100,7 +63,6 @@ export async function fetchProfilesByWallets(wallets: string[]): Promise<Map<str
 }
 
 /** Charge le profil d'un wallet (null si inexistant ou erreur) — simple lecture, RLS publique. */
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 export async function fetchProfile(wallet: string): Promise<BuilderProfile | null> {
   if (!supabase) return null;
   const { data, error } = await supabase
@@ -115,24 +77,7 @@ export async function fetchProfile(wallet: string): Promise<BuilderProfile | nul
   return data ? fromRemote(data) : null;
 }
 
-<<<<<<< HEAD
-/** Crée ou met à jour le profil (upsert sur la clé wallet) */
-export async function upsertProfile(profile: BuilderProfile): Promise<boolean> {
-  if (!supabase) return false;
-  const { error } = await supabase
-    .from('builder_profiles')
-    .upsert(toRemote(profile), { onConflict: 'wallet' });
-  if (error) {
-    console.error('[profileRemote] upsert error:', error.message);
-    return false;
-  }
-  return true;
-}
-
-/** Liste tous les profils disponibles (annuaire builders — Phase 2) */
-=======
 /** Liste tous les profils disponibles (available=true) uniquement. */
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 export async function listAvailableProfiles(): Promise<BuilderProfile[]> {
   if (!supabase) return [];
   const { data, error } = await supabase
@@ -146,8 +91,6 @@ export async function listAvailableProfiles(): Promise<BuilderProfile[]> {
   }
   return (data ?? []).map(fromRemote);
 }
-<<<<<<< HEAD
-=======
 
 /** Liste TOUS les profils (annuaire builders — page /builders), qu'ils soient
  *  disponibles ou non. On ne cache qu'un profil vide (jamais réellement
@@ -286,4 +229,3 @@ export async function uploadProfileAvatar(
 
   return { url: `${data.publicUrl}?t=${Date.now()}` };
 }
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3

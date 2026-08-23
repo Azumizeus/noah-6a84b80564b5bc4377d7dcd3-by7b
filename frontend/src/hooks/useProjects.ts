@@ -5,21 +5,6 @@ import { LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
 import { BN, type Program } from '@coral-xyz/anchor';
 import {
   getProgram, getProvider, getReadonlyProgram, findVaultPda,
-<<<<<<< HEAD
-  fetchAllProjects, distribute, fund, finalize,
-} from '../lib/anchor';
-import { parseTxError, type ChainPact } from '../lib/pacts';
-
-/** Program Anchor : wallet réel si connecté, readonly sinon */
-export function useAnchorProgram(): Program {
-  const { publicKey, signTransaction, signAllTransactions } = useWallet();
-  return useMemo(() => {
-    if (publicKey && signTransaction && signAllTransactions) {
-     return getProgram(getProvider({ publicKey, signTransaction, signAllTransactions }));
-    }
-    return getReadonlyProgram();
-  }, [publicKey, signTransaction, signAllTransactions]);
-=======
   fetchAllProjects, fetchProject, distribute, fund, finalize,
 } from '../lib/anchor';
 import { parseTxError, type ChainPact } from '../lib/pacts';
@@ -39,7 +24,6 @@ export function useAnchorProgram(): Program {
     }
     return getReadonlyProgram();
   }, [publicKey, signTransaction, signAllTransactions, sendTransaction]);
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 }
 
 /** Charge TOUS les projets on-chain + balances des vaults (1 seul appel RPC batch) */
@@ -109,8 +93,6 @@ export function useProjects() {
   return { pacts, loading, error, refresh };
 }
 
-<<<<<<< HEAD
-=======
 // ═══════════════════════════════════════════════════════════════════
 // Page publique #/pact/:pda — DOIT fonctionner sans wallet connecté.
 // Réutilise getReadonlyProgram() (déjà utilisé par useProjects() quand
@@ -184,7 +166,6 @@ export function usePublicPact(pdaBase58: string | null) {
   return { pact, loading, error };
 }
 
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 export interface TxState {
   kind: 'success' | 'error';
   text: string;
@@ -195,10 +176,7 @@ export interface TxState {
 export function usePactActions(refresh: () => void) {
   const program = useAnchorProgram();
   const { publicKey } = useWallet();
-<<<<<<< HEAD
-=======
   const { t } = useLanguage();
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
   const [busyId, setBusyId] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<'distribute' | 'fund' | 'finalize' | null>(null);
   const [txState, setTxState] = useState<TxState | null>(null);
@@ -213,11 +191,7 @@ export function usePactActions(refresh: () => void) {
         program, publicKey, pact.pda, pact.protocolWallet,
         pact.members.map((m) => m.wallet),
       );
-<<<<<<< HEAD
-      setTxState({ kind: 'success', text: `Distribution de ${pact.vaultBalanceSol.toFixed(4)} SOL envoyée à ${pact.members.length} membre(s).`, sig });
-=======
       setTxState({ kind: 'success', text: t('txMessages.distributeSuccess', { amount: pact.vaultBalanceSol.toFixed(4), n: pact.members.length }), sig });
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
       refresh();
     } catch (e) {
       setTxState({ kind: 'error', text: parseTxError(e) });
@@ -225,11 +199,7 @@ export function usePactActions(refresh: () => void) {
       setBusyId(null);
       setBusyAction(null);
     }
-<<<<<<< HEAD
-  }, [program, publicKey, refresh]);
-=======
   }, [program, publicKey, refresh, t]);
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 
   const runFund = useCallback(async (pact: ChainPact, amountSol: number) => {
     if (!publicKey) return;
@@ -239,12 +209,8 @@ export function usePactActions(refresh: () => void) {
     try {
       const lamports = new BN(Math.round(amountSol * LAMPORTS_PER_SOL));
       const sig = await fund(program, publicKey, pact.pda, lamports);
-<<<<<<< HEAD
-      setTxState({ kind: 'success', text: `${amountSol} SOL envoyés dans le vault de « ${pact.title} ».`, sig });
-=======
       setTxState({ kind: 'success', text: t('txMessages.fundSuccess', { amount: amountSol, title: pact.title }), sig });
       logPactEvent({ projectPda: pact.pda.toBase58(), kind: 'fund', actor: publicKey.toBase58(), amountSol, txSig: sig });
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
       refresh();
     } catch (e) {
       setTxState({ kind: 'error', text: parseTxError(e) });
@@ -252,11 +218,7 @@ export function usePactActions(refresh: () => void) {
       setBusyId(null);
       setBusyAction(null);
     }
-<<<<<<< HEAD
-  }, [program, publicKey, refresh]);
-=======
   }, [program, publicKey, refresh, t]);
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 
   const runFinalize = useCallback(async (pact: ChainPact) => {
     if (!publicKey) return;
@@ -265,11 +227,7 @@ export function usePactActions(refresh: () => void) {
     if (!pact.creator.equals(publicKey)) {
       setTxState({
         kind: 'error',
-<<<<<<< HEAD
-        text: 'Seul le créateur du pact peut le finaliser. Reconnecte-toi avec le wallet founder.',
-=======
         text: t('txMessages.onlyCreatorCanFinalize'),
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
       });
       return;
     }
@@ -279,12 +237,8 @@ export function usePactActions(refresh: () => void) {
     setTxState(null);
     try {
       const sig = await finalize(program, publicKey, pact.pda);
-<<<<<<< HEAD
-      setTxState({ kind: 'success', text: `Projet « ${pact.title} » finalisé et verrouillé on-chain.`, sig });
-=======
       setTxState({ kind: 'success', text: t('txMessages.finalizeSuccess', { title: pact.title }), sig });
       logPactEvent({ projectPda: pact.pda.toBase58(), kind: 'finalize', actor: publicKey.toBase58(), txSig: sig });
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
       refresh();
     } catch (e) {
       setTxState({ kind: 'error', text: parseTxError(e) });
@@ -292,11 +246,6 @@ export function usePactActions(refresh: () => void) {
       setBusyId(null);
       setBusyAction(null);
     }
-<<<<<<< HEAD
-  }, [program, publicKey, refresh]);
-
-  return { busyId, busyAction, txState, runDistribute, runFund, runFinalize };
-=======
   }, [program, publicKey, refresh, t]);
 
   // Permet de fermer manuellement le bandeau du haut (bouton × dans TxBanner).
@@ -472,5 +421,4 @@ export function useTreasury(): TreasurySummary {
   }, [program, connection, t]); // `t` inclus : re-traduit les labels de flux au changement de langue
 
   return state;
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 }

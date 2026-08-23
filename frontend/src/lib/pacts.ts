@@ -1,7 +1,5 @@
 // src/lib/pacts.ts
 import type { PublicKey } from '@solana/web3.js';
-<<<<<<< HEAD
-=======
 import { translate, type Lang } from './i18n/translations';
 
 /** Langue courante lue en synchrone (localStorage) — pacts.ts n'est pas un
@@ -16,7 +14,6 @@ function currentLang(): Lang {
   }
   return 'fr';
 }
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 
 export type PactStatus = 'active' | 'pending'; // active = Finalized, pending = Open
 
@@ -50,18 +47,6 @@ export function explorerTxUrl(sig: string): string {
   return `https://explorer.solana.com/tx/${sig}?cluster=devnet`;
 }
 
-<<<<<<< HEAD
-/** Erreur Anchor/wallet → message lisible */
-export function parseTxError(err: unknown): string {
-  const e = err as any;
-  const msg: string = e?.error?.errorMessage ?? e?.message ?? String(err);
-  if (msg.includes('User rejected')) return 'Transaction refusée dans le wallet.';
-  if (msg.includes('6017') || msg.includes('DistributionEmpty')) return 'Vault vide — rien à distribuer.';
-  if (msg.includes('6015') || msg.includes('NotFinalized')) return 'Projet non finalisé.';
-  if (msg.includes('6016') || msg.includes('MemberMismatch')) return 'Liste des membres invalide.';
-  if (msg.includes('6012') || msg.includes('NotAllApproved')) return 'Tous les membres n\'ont pas approuvé.';
-  if (msg.includes('insufficient funds')) return 'SOL insuffisant pour les frais de transaction.';
-=======
 /**
  * Page Explorer d'un COMPTE (pas d'une tx précise) — historique complet et
  * permanent de toutes les transactions envoyées à cette adresse, indépendant
@@ -119,7 +104,6 @@ export function parseTxError(err: unknown): string {
   ) {
     return tr('errors.devnetCongestion');
   }
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
   return msg.length > 140 ? msg.slice(0, 140) + '…' : msg;
 }
 
@@ -142,8 +126,4 @@ export function formatAddress(address: string | undefined | null): string {
 
 export function getVaultBalance(pact: any): number {
   return pact?.vaultBalanceSol ?? 0;
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3

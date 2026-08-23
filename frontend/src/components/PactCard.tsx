@@ -1,12 +1,3 @@
-<<<<<<< HEAD
-import { useState } from 'react';
-import { useWallet } from '@solana/wallet-adapter-react';
-import { approve, distributeWithReceipt } from '../lib/anchor';
-import { useAnchorProgram } from '../hooks/useProjects';
-import { formatSol, formatAddress, parseTxError } from '../lib/pacts';
-import type { Pact, PactAction, DistributionReceipt } from '../types/pact';
-import AddMemberModal from './AddMemberModal';
-=======
 import { useEffect, useState } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { approve, distributeWithReceipt, closeProject, findVaultPda } from '../lib/anchor';
@@ -21,7 +12,6 @@ import type { ProjectMedia } from '../lib/media';
 import AddMemberModal from './AddMemberModal';
 import EditMediaModal from './EditMediaModal';
 import { useLanguage } from '../lib/i18n/LanguageContext';
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 
 interface Props {
   pact: Pact;
@@ -31,8 +21,6 @@ interface Props {
   onFinalize: (pact: Pact) => void;
   /** @deprecated — distribute géré en interne (reçu signé). Prop conservée pour compat parent, ignorée. */
   onDistribute?: (pact: Pact) => void;
-<<<<<<< HEAD
-=======
   /** Ferme le bandeau Fund/Finalize du haut au démarrage d'une distribution,
    *  pour éviter qu'un vieux message reste affiché au-dessus du nouveau reçu. */
   clearTopBanner?: () => void;
@@ -53,7 +41,6 @@ interface Props {
    *  ne fait que dupliquer l'accès. Par défaut true (Dashboard/Pacts, où le
    *  bouton est le point d'entrée vers la fiche). */
   showOpenSheetButton?: boolean;
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 }
 
 // ─── Reçus de distribution persistés en sessionStorage (survit à un reload) ───
@@ -99,17 +86,6 @@ export default function PactCard({
   busyAction,
   onFund,
   onFinalize,
-<<<<<<< HEAD
-}: Props) {
-  const { publicKey } = useWallet();
-  const program = useAnchorProgram();
-  const [fundAmount, setFundAmount] = useState('0.1');
-  const [showAddMember, setShowAddMember] = useState(false);
-  const [approving, setApproving] = useState(false);
-  const [approveError, setApproveError] = useState<string | null>(null);
-  const [distributing, setDistributing] = useState(false);
-  const [distributeError, setDistributeError] = useState<string | null>(null);
-=======
   clearTopBanner,
   onDistributed,
   media,
@@ -130,17 +106,11 @@ export default function PactCard({
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
   const [receipts, setReceipts] = useState<Record<string, DistributionReceipt>>(
     () => loadReceipts()
   );
 
   const pdaKey = pact.pda.toBase58();
-<<<<<<< HEAD
-  const receipt = receipts[pdaKey];
-  const busy = busyAction !== null;
-
-=======
   const vaultPdaKey = findVaultPda(pact.pda)[0].toBase58();
   const receipt = receipts[pdaKey];
   const busy = busyAction !== null;
@@ -161,16 +131,11 @@ export default function PactCard({
     return () => { cancelled = true; };
   }, [pdaKey]);
 
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
   const statusColor =
     pact.status === 'active'
       ? 'text-emerald-400 border-emerald-400/30 bg-emerald-400/10'
       : 'text-amber-400 border-amber-400/30 bg-amber-400/10';
-<<<<<<< HEAD
-  const statusLabel = pact.status === 'active' ? 'Finalisé' : 'Ouvert';
-=======
   const statusLabel = pact.status === 'active' ? t('pactCard.finalized') : t('pactCard.open');
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 
   const myAddr = publicKey?.toBase58();
   const me = pact.members.find((m) => m.wallet.toBase58() === myAddr);
@@ -195,16 +160,11 @@ export default function PactCard({
     setApproving(true);
     setApproveError(null);
     try {
-<<<<<<< HEAD
-      await approve(program, publicKey, pact.pda);
-      window.location.reload();
-=======
       const sig = await approve(program, publicKey, pact.pda);
       // ⚠️ Pas de reload immédiat : on laisse le lien Explorer visible,
       // l'utilisateur rafraîchit lui-même une fois qu'il l'a vu/copié.
       setApproveSig(sig);
       logPactEvent({ projectPda: pdaKey, kind: 'approve', actor: publicKey.toBase58(), txSig: sig });
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
     } catch (e: any) {
       setApproveError(parseTxError(e));
     } finally {
@@ -214,23 +174,17 @@ export default function PactCard({
 
   const handleDistribute = async () => {
     if (!publicKey || !program) return;
-<<<<<<< HEAD
-=======
     clearTopBanner?.();
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
     setDistributing(true);
     setDistributeError(null);
     try {
       const r = await distributeWithReceipt(program, publicKey, pact);
       setReceipts(saveReceipt(pdaKey, r));
-<<<<<<< HEAD
-=======
       logPactEvent({ projectPda: pdaKey, kind: 'distribute', actor: publicKey.toBase58(), amountSol: r.grossSol, txSig: r.signature });
       // Sans ça, "Your claimable" / "Vault balance" restent figés à l'ancienne
       // valeur : le reçu ci-dessous est correct, mais les chiffres du haut de
       // la carte ne bougent qu'après un refresh manuel de la page.
       onDistributed?.();
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
     } catch (e: any) {
       setDistributeError(parseTxError(e));
     } finally {
@@ -238,16 +192,6 @@ export default function PactCard({
     }
   };
 
-<<<<<<< HEAD
-  const finalizeBlockReason = !iAmCreator
-    ? 'Seul le founder peut finaliser'
-    : pact.members.length < 2
-      ? 'Ajoute au moins 2 membres'
-      : !sharesComplete
-        ? `Total des parts = ${totalPct.toFixed(2)}% — doit être exactement 100%`
-        : !allApproved
-          ? `${approvedCount}/${pact.members.length} approbations`
-=======
   const handleCancel = async () => {
     if (!publicKey || !program) return;
     setCancelling(true);
@@ -274,33 +218,11 @@ export default function PactCard({
         ? t('pactCard.sharesMustBe100', { pct: totalPct.toFixed(2) })
         : !allApproved
           ? t('pactCard.approvalsCount', { done: approvedCount, total: pact.members.length })
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
           : '';
 
   return (
     <>
       <article className="glass-panel group relative overflow-hidden rounded-2xl border border-white/5 p-6 transition-all hover:border-accent-violet/20">
-<<<<<<< HEAD
-        <div className="mb-4 flex items-start justify-between">
-          <div>
-            <h3 className="font-sans text-lg font-semibold text-white">
-              {pact.title}
-            </h3>
-            <p className="mt-1 font-mono text-xs text-ink-400">
-              Creator: {formatAddress(pact.creator.toBase58())}
-            </p>
-          </div>
-          <span
-            className={`rounded-full border px-2.5 py-1 text-xs font-medium ${statusColor}`}
-          >
-            {statusLabel}
-          </span>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4 border-t border-white/5 pt-4">
-          <div>
-            <p className="text-xs text-ink-400">Your claimable</p>
-=======
         {/* Bannière — bleed jusqu'aux bords du card grâce à overflow-hidden sur <article> */}
         {media?.bannerUrl && (
           <div className="-mx-6 -mt-6 mb-4 h-28 w-[calc(100%+3rem)] sm:h-36">
@@ -409,41 +331,26 @@ export default function PactCard({
         <div className="grid grid-cols-2 gap-4 border-t border-white/5 pt-4">
           <div>
             <p className="text-xs text-ink-400">{t('pactCard.claimable')}</p>
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
             <p className="mt-0.5 font-mono text-lg font-bold text-accent-neon">
               {formatSol(pact.myClaimableSol)} SOL
             </p>
           </div>
           <div>
-<<<<<<< HEAD
-            <p className="text-xs text-ink-400">Vault balance</p>
-=======
             <p className="text-xs text-ink-400">{t('pactCard.vaultBalance')}</p>
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
             <p className="mt-0.5 font-mono text-lg font-bold text-white">
               {formatSol(pact.vaultBalanceSol)} SOL
             </p>
           </div>
           <div>
-<<<<<<< HEAD
-            <p className="text-xs text-ink-400">Your share</p>
-=======
             <p className="text-xs text-ink-400">{t('pactCard.yourShare')}</p>
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
             <p className="mt-0.5 font-mono text-sm text-white">
               {(pact.myShareBps / 100).toFixed(2)}%
             </p>
           </div>
           <div>
-<<<<<<< HEAD
-            <p className="text-xs text-ink-400">Members</p>
-            <p className="mt-0.5 font-mono text-sm text-white">
-              {pact.members.length} membre(s)
-=======
             <p className="text-xs text-ink-400">{t('pactCard.members')}</p>
             <p className="mt-0.5 font-mono text-sm text-white">
               {t('pactCard.memberCount', { n: pact.members.length })}
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
             </p>
           </div>
         </div>
@@ -471,11 +378,7 @@ export default function PactCard({
                       m.approved ? 'text-emerald-400' : 'text-amber-400'
                     }
                   >
-<<<<<<< HEAD
-                    {m.approved ? '✓ approuvé' : '⏳ en attente'}
-=======
                     {m.approved ? t('pactCard.approved') : t('pactCard.pending')}
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
                   </span>
                 )}
               </div>
@@ -485,17 +388,10 @@ export default function PactCard({
                 sharesComplete ? 'text-emerald-400' : 'text-red-400'
               }`}
             >
-<<<<<<< HEAD
-              <span>Total</span>
-              <span>
-                {totalPct.toFixed(2)}%{' '}
-                {sharesComplete ? '✓' : '⚠️ doit = 100%'}
-=======
               <span>{t('pactCard.total')}</span>
               <span>
                 {totalPct.toFixed(2)}%{' '}
                 {sharesComplete ? '✓' : t('pactCard.mustBe100')}
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
               </span>
             </div>
           </div>
@@ -503,11 +399,6 @@ export default function PactCard({
 
         {walletConnected && (
           <div className="mt-6 space-y-3 border-t border-white/5 pt-4">
-<<<<<<< HEAD
-            {pact.status !== 'active' && (
-              <div className="flex flex-col gap-2">
-                {iAmMember && !iHaveApproved && (
-=======
             {/* Phantom/Backpack font leur propre simulation de sécurité via LEUR
                 RPC devnet avant de signer — indépendant du RPC (Helius) que ce
                 site utilise pour envoyer la transaction. Le devnet public est
@@ -522,20 +413,11 @@ export default function PactCard({
             {pact.status !== 'active' && (
               <div className="flex flex-col gap-2">
                 {iAmMember && !iHaveApproved && !approveSig && (
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
                   <button
                     onClick={handleApprove}
                     disabled={approving || busy}
                     className="w-full rounded-lg border border-emerald-500/50 bg-emerald-500/10 py-2 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20 disabled:opacity-50"
                   >
-<<<<<<< HEAD
-                    {approving ? 'Signature...' : '✅ Approuver ce pact'}
-                  </button>
-                )}
-                {iAmMember && iHaveApproved && (
-                  <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 py-2 text-center text-xs text-emerald-400">
-                    ✓ Tu as approuvé ce pact
-=======
                     {approving ? t('pactCard.approving') : t('pactCard.approveButton')}
                   </button>
                 )}
@@ -561,7 +443,6 @@ export default function PactCard({
                 {iAmMember && iHaveApproved && (
                   <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 py-2 text-center text-xs text-emerald-400">
                     {t('pactCard.youApproved')}
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
                   </div>
                 )}
                 {approveError && (
@@ -576,15 +457,6 @@ export default function PactCard({
                     disabled={busy}
                     className="w-full rounded-lg border border-purple-500/50 bg-purple-500/10 py-2 text-sm font-medium text-purple-300 transition hover:bg-purple-500/20 disabled:opacity-50"
                   >
-<<<<<<< HEAD
-                    + Ajouter membre
-                  </button>
-                )}
-                <div className="text-xs text-ink-400">
-                  {finalizeBlockReason
-                    ? `⏳ ${finalizeBlockReason}`
-                    : '✅ Prêt à finaliser'}
-=======
                     {t('pactCard.addMemberButton')}
                   </button>
                 )}
@@ -633,7 +505,6 @@ export default function PactCard({
                   {finalizeBlockReason
                     ? `⏳ ${finalizeBlockReason}`
                     : t('pactCard.readyToFinalize')}
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
                 </div>
               </div>
             )}
@@ -641,26 +512,18 @@ export default function PactCard({
             {pact.status === 'active' && (
               <div className="flex flex-col gap-2">
                 <div className="flex gap-2">
-<<<<<<< HEAD
-                  <input
-=======
                   <label htmlFor={`fund-amount-${pdaKey}`} className="sr-only">
                     {t('pactCard.fundAmountLabel', { title: pact.title })}
                   </label>
                   <input
                     id={`fund-amount-${pdaKey}`}
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
                     type="number"
                     value={fundAmount}
                     onChange={(e) => setFundAmount(e.target.value)}
                     min="0.001"
                     step="0.001"
                     className="flex-1 rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm text-white focus:border-accent-violet/50 focus:outline-none"
-<<<<<<< HEAD
-                    placeholder="Montant SOL"
-=======
                     placeholder={t('pactCard.fundPlaceholder')}
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
                   />
                   <button
                     onClick={() => onFund(pact, parseFloat(fundAmount))}
@@ -668,21 +531,12 @@ export default function PactCard({
                     className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
                   >
                     {busyAction === 'fund'
-<<<<<<< HEAD
-                      ? 'Envoi...'
-                      : '💚 Soutenir ce projet'}
-                  </button>
-                </div>
-                <p className="text-center text-xs text-ink-400">
-                  Grant on-chain — les fonds sont splités automatiquement entre les membres selon leurs parts (2% protocole)
-=======
                       ? t('pactCard.sending')
                       : t('pactCard.fundButton')}
                   </button>
                 </div>
                 <p className="text-center text-xs text-ink-400">
                   {t('pactCard.fundHint')}
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
                 </p>
               </div>
             )}
@@ -693,22 +547,6 @@ export default function PactCard({
                   <button
                     onClick={() => onFinalize(pact)}
                     disabled={busy || !canFinalize}
-<<<<<<< HEAD
-                    className="flex-1 rounded-lg bg-accent-violet px-4 py-2 text-sm font-medium text-white transition hover:bg-accent-violet/90 disabled:opacity-50"
-                    title={finalizeBlockReason}
-                  >
-                    {busyAction === 'finalize'
-                      ? 'Finalisation...'
-                      : '🔒 Finaliser (founder)'}
-                  </button>
-                ) : (
-                  <div className="flex-1 rounded-lg border border-white/10 bg-black/30 px-4 py-2 text-center text-xs text-ink-400">
-                    🔒 Seul le founder peut finaliser et débloquer la
-                    rémunération
-                  </div>
-                )
-              ) : (
-=======
                     className="flex-1 rounded-lg bg-accent-violet px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-accent-violet/90 disabled:opacity-50"
                     title={finalizeBlockReason}
                   >
@@ -722,7 +560,6 @@ export default function PactCard({
                   </div>
                 )
               ) : iAmCreator ? (
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
                 <div className="flex-1 space-y-1">
                   <button
                     onClick={handleDistribute}
@@ -731,24 +568,14 @@ export default function PactCard({
                     className="w-full rounded-lg bg-accent-neon px-4 py-2 text-sm font-bold text-ink-900 transition hover:opacity-90 disabled:opacity-50"
                   >
                     {distributing
-<<<<<<< HEAD
-                      ? 'Distribution...'
-                      : `Distribuer ${formatSol(pact.vaultBalanceSol)} SOL aux membres`}
-=======
                       ? t('pactCard.distributing')
                       : t('pactCard.distributeButton', { amount: formatSol(pact.vaultBalanceSol) })}
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
                   </button>
                   <p
                     id={`distrib-hint-${pdaKey}`}
                     className="text-center text-xs text-ink-400"
                   >
-<<<<<<< HEAD
-                    Split automatique : 2% protocole · 98% pro-rata des parts →
-                    wallets des membres
-=======
                     {t('pactCard.distributeHint')}
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
                   </p>
                   {distributeError && (
                     <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-400">
@@ -756,13 +583,10 @@ export default function PactCard({
                     </div>
                   )}
                 </div>
-<<<<<<< HEAD
-=======
               ) : (
                 <div className="flex-1 rounded-lg border border-white/10 bg-black/30 px-4 py-2 text-center text-xs text-ink-400">
                   {t('pactCard.onlyFounderDistribute')}
                 </div>
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
               )}
             </div>
           </div>
@@ -775,21 +599,12 @@ export default function PactCard({
           >
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-emerald-400">
-<<<<<<< HEAD
-                ✓ Distribution exécutée
-              </span>
-              <button
-                onClick={() => setReceipts(clearReceipt(pdaKey))}
-                aria-label="Fermer le reçu de distribution"
-                className="text-ink-400 transition hover:text-white"
-=======
                 {t('pactCard.distributionDone')}
               </span>
               <button
                 onClick={() => setReceipts(clearReceipt(pdaKey))}
                 aria-label={t('pactCard.closeReceipt')}
                 className="-m-2.5 flex h-9 w-9 items-center justify-center p-2.5 text-ink-400 transition hover:text-white"
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
               >
                 ×
               </button>
@@ -800,11 +615,7 @@ export default function PactCard({
               rel="noreferrer"
               className="mt-1 block text-xs text-accent-violet underline"
             >
-<<<<<<< HEAD
-              Voir la transaction sur Solscan ↗
-=======
               {t('pactCard.viewOnSolscan')}
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
             </a>
             <ul className="mt-2 space-y-1">
               {receipt.payouts.map((p) => (
@@ -821,11 +632,7 @@ export default function PactCard({
                 </li>
               ))}
               <li className="flex justify-between border-t border-white/5 pt-1 font-mono text-xs">
-<<<<<<< HEAD
-                <span className="text-ink-400">Protocole (2%)</span>
-=======
                 <span className="text-ink-400">{t('pactCard.protocolFee')}</span>
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
                 <span className="text-white">
                   +{formatSol(receipt.feeSol)} SOL
                 </span>
@@ -839,10 +646,7 @@ export default function PactCard({
         <AddMemberModal
           projectPda={pact.pda}
           projectTitle={pact.title}
-<<<<<<< HEAD
-=======
           existingMembers={pact.members}
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
           onClose={() => setShowAddMember(false)}
           onSuccess={() => {
             setShowAddMember(false);
@@ -850,8 +654,6 @@ export default function PactCard({
           }}
         />
       )}
-<<<<<<< HEAD
-=======
 
       {showEditMedia && (
         <EditMediaModal
@@ -867,7 +669,6 @@ export default function PactCard({
           }}
         />
       )}
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
     </>
   );
 }

@@ -5,15 +5,12 @@ declare_id!("9quyDwntXDBhNhTmrfCf7xEXVFaxYMB83BwPEUeqVoUJ");
 
 pub const PROTOCOL_FEE_BPS: u16 = 200; // 2%
 pub const TOTAL_BPS: u16 = 10000;
-<<<<<<< HEAD
-=======
 // Wallet protocole verrouillé on-chain — doit être identique à PLATFORM_WALLET
 // dans frontend/src/components/CreatePactWizard.tsx. Avant ce fix, create_project
 // acceptait n'importe quel protocol_wallet fourni par l'appelant : le frontend
 // officiel envoyait toujours la bonne valeur, mais un appel direct au programme
 // (script, autre front) pouvait détourner les 2% de frais vers un autre wallet.
 pub const PROTOCOL_WALLET: Pubkey = pubkey!("AVhVM29hD6YRLb2DujhKfF8Ger4bgaCpx9P93Q3XBWSH");
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 pub const MAX_PROJECT_ID_LEN: usize = 20;
 pub const MAX_TITLE_LEN: usize = 40;
 pub const MAX_DESC_LEN: usize = 280;
@@ -52,10 +49,7 @@ pub mod workspace {
         require!(description.len() <= MAX_DESC_LEN, ErrorCode::InvalidParameter);
         require!(creator_role.len() <= MAX_ROLE_LEN, ErrorCode::InvalidParameter);
         require!(creator_share_bps <= TOTAL_BPS, ErrorCode::ShareExceeded);
-<<<<<<< HEAD
-=======
         require!(protocol_wallet == PROTOCOL_WALLET, ErrorCode::InvalidProtocolWallet);
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 
         let creator_key = ctx.accounts.creator.key();
 
@@ -558,9 +552,6 @@ pub enum ErrorCode {
     MemberNotFound,
     #[msg("Cannot remove a member who already approved")]
     MemberAlreadyApproved,
-<<<<<<< HEAD
-=======
     #[msg("protocol_wallet must match the locked BuildPact protocol wallet")]
     InvalidProtocolWallet,
->>>>>>> fa844dd29fb2795b6a94555f7fd306add97458a3
 }
