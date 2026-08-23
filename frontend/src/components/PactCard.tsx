@@ -11,6 +11,7 @@ import type { Pact, PactAction, DistributionReceipt } from '../types/pact';
 import type { ProjectMedia } from '../lib/media';
 import AddMemberModal from './AddMemberModal';
 import EditMediaModal from './EditMediaModal';
+import { parsePitch, stageBadgeLabel } from '../lib/pitch';
 import PactTimeline from './pact/PactTimeline';
 import OrbitalCapTable from './pact/OrbitalCapTable';
 import VaultShareGauge from './pact/VaultShareGauge';
@@ -223,6 +224,7 @@ export default function PactCard({
           ? t('pactCard.approvalsCount', { done: approvedCount, total: pact.members.length })
           : '';
             const isDetailView = !showOpenSheetButton;
+              const parsed = parsePitch(pact.description);
 
   return (
     <>
@@ -316,6 +318,23 @@ export default function PactCard({
             )}
           </div>
         </div>
+                {isDetailView && (
+          <div className="mb-4 space-y-2">
+            {parsed.stage && (
+              <span className="inline-block rounded-full bg-violet-500/10 px-2.5 py-1 text-[11px] font-medium text-accent-violet">
+                {stageBadgeLabel(parsed.stage)}
+              </span>
+            )}
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink-200">
+              {parsed.pitch || pact.description}
+            </p>
+            {parsed.rolesWanted && (
+              <p className="text-xs text-ink-400">
+                <span className="text-ink-300">Rôles recherchés : </span>{parsed.rolesWanted}
+              </p>
+            )}
+          </div>
+        )}
         {isDetailView && (
           <div className="mb-4 border-t border-white/5 pt-4">
             <PactTimeline pact={pact} hasReceipt={!!receipt} />
