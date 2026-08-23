@@ -26,6 +26,9 @@ export function useAnchorProgram(): Program {
   }, [publicKey, signTransaction, signAllTransactions, sendTransaction]);
 }
 
+/** Pacts de test technique à ne jamais montrer publiquement (voir audit UI/UX #3) */
+const HIDDEN_PACT_PDAS = new Set(['2n32pfWXDbYLLzy9ky3vj6xH4PFM2S7EXAGqsF83aLqc']);
+
 /** Charge TOUS les projets on-chain + balances des vaults (1 seul appel RPC batch) */
 export function useProjects() {
   const program = useAnchorProgram();
@@ -78,7 +81,7 @@ export function useProjects() {
           };
         });
 
-        if (!cancelled) setPacts(mapped);
+        if (!cancelled) setPacts(mapped.filter(p => !HIDDEN_PACT_PDAS.has(p.pda.toString())));
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
       } finally {

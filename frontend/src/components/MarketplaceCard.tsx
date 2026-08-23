@@ -49,7 +49,7 @@ export function MarketplaceCard({ pact, onApply, media }: Props) {
               className="h-9 w-9 shrink-0 rounded-lg object-cover ring-1 ring-white/10"
             />
           )}
-          <h3 className="truncate font-sans text-lg font-semibold text-white">{pact.title}</h3>
+          <h3 className="line-clamp-2 font-sans text-lg font-semibold text-white">{pact.title}</h3>
         </div>
         <span
           className={
