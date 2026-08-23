@@ -207,3 +207,12 @@
             mask-image: radial-gradient(ellipse 80% 50% at 50% 0%, #000 60%, transparent 100%);
   }
 }
+
+.wallet-adapter-modal-title {
+  font-size: 0 !important;
+}
+.wallet-adapter-modal-title::after {
+  content: "Connecte un wallet Solana pour continuer";
+  font-size: 18px;
+  font-weight: 600;
+}
