@@ -7,7 +7,7 @@ export default {
   theme: {
     extend: {
            colors: {
-        base: '#0B0B16',              // ← avant #030308 : ardoise profonde qui respire
+        canvas: '#0B0B16',              // ← avant #030308 : ardoise profonde qui respire
         panel: 'rgba(26,26,46,0.6)',
         ink: {
           50:  '#FAFAFD',

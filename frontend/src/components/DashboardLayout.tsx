@@ -87,7 +87,7 @@ export function DashboardLayout({
 
   return (
     <MotionConfig reducedMotion="user">
-      <div className="relative min-h-screen overflow-x-hidden bg-base">
+      <div className="relative min-h-screen overflow-x-hidden bg-canvas">
         {/* Grille décorative */}
         <div aria-hidden="true" className="pointer-events-none fixed inset-0 grid-bg opacity-70" />
 
@@ -117,7 +117,7 @@ export function DashboardLayout({
         <a
           href="#main-content"
           className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50
-                     focus:rounded-lg focus:bg-base-700 focus:px-4 focus:py-2 focus:text-white"
+                     focus:rounded-lg focus:bg-canvas-700 focus:px-4 focus:py-2 focus:text-white"
         >
           {t('nav.skipToContent')}
         </a>
@@ -200,7 +200,7 @@ export function DashboardLayout({
                 initial={prefersReduced ? false : { opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.18 }}
-                className="mb-4 flex flex-col gap-1 rounded-xl border border-white/10 bg-base-700/90 p-2 backdrop-blur-sm"
+                className="mb-4 flex flex-col gap-1 rounded-xl border border-white/10 bg-canvas-700/90 p-2 backdrop-blur-sm"
               >
                 {linksWithActive.map((l) => (
                   <li key={l.href}>

@@ -129,7 +129,7 @@ const STAGE_IDS = ['dev', 'invest', 'both'] as const;
 // (partagée avec AddMemberModal, pour ne jamais désynchroniser les deux formulaires)
 
 const inputCls =
-  'w-full rounded-xl border border-white/10 bg-base-800/80 p-3 text-sm text-white ' +
+  'w-full rounded-xl border border-white/10 bg-canvas-800/80 p-3 text-sm text-white ' +
   'transition-colors placeholder:text-ink-400 focus:border-accent-violet/60 focus:outline-none focus:ring-2 focus:ring-accent-violet/20';
 const labelCls = 'block text-sm font-semibold text-white';
 const hintCls = 'mt-1.5 block text-[11px] leading-snug text-ink-400';
@@ -789,7 +789,7 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
           {/* WALLET PROTOCOLE — FIXE */}
           <div>
             <p className={labelCls}>{t('createWizard.platformWalletLabel')}</p>
-            <div className="flex items-center gap-2 rounded border border-white/10 bg-base-900/60 p-2">
+            <div className="flex items-center gap-2 rounded border border-white/10 bg-canvas-900/60 p-2">
               <span className="flex-1 truncate font-mono text-[11px] text-ink-400">
                 {PLATFORM_WALLET}
               </span>
@@ -841,14 +841,14 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
             <div key={i} className="space-y-2 rounded-lg border border-white/5 p-2">
               <div className="flex gap-2">
                 <input
-                  className="flex-1 rounded border border-white/10 bg-base-800 p-2 text-sm text-white"
+                  className="flex-1 rounded border border-white/10 bg-canvas-800 p-2 text-sm text-white"
                   placeholder={t('createWizard.memberWalletPlaceholder')}
                   value={m.wallet}
                   onChange={(e) => updateMemberWallet(i, e.target.value)}
                 />
                 <input
                   type="number"
-                  className="w-16 rounded border border-white/10 bg-base-800 p-2 text-sm text-white"
+                  className="w-16 rounded border border-white/10 bg-canvas-800 p-2 text-sm text-white"
                   placeholder="%"
                   value={m.share}
                   onChange={(e) => updateMemberShare(i, Number(e.target.value))}
@@ -880,7 +880,7 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
               </div>
 
               <input
-                className="w-full rounded border border-white/10 bg-base-800 p-2 text-sm text-white"
+                className="w-full rounded border border-white/10 bg-canvas-800 p-2 text-sm text-white"
                 placeholder={t('createWizard.memberCustomRolePlaceholder')}
                 value={m.customRole}
                 onChange={(e) => updateMemberCustomRole(i, e.target.value)}
@@ -999,7 +999,7 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
           <p className="text-white">{t('createWizard.membersRegistered')}</p>
 
           {memberSigs.length > 0 && (
-            <div className="rounded-lg border border-white/10 bg-base-900/60 p-3 text-left">
+            <div className="rounded-lg border border-white/10 bg-canvas-900/60 p-3 text-left">
               <p className="mb-1 text-[11px] font-semibold text-ink-300">
                 {t('createWizard.addMemberTxLabel')}
               </p>
@@ -1027,7 +1027,7 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
                 <p className="mb-1 text-[10px] uppercase tracking-wider text-ink-400">
                   {t('createWizard.shareLinkLabel')}
                 </p>
-                <p className="truncate rounded border border-white/10 bg-base-900/60 px-2 py-1.5 font-mono text-[11px] text-ink-300">
+                <p className="truncate rounded border border-white/10 bg-canvas-900/60 px-2 py-1.5 font-mono text-[11px] text-ink-300">
                   {shareUrl}
                 </p>
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -1063,7 +1063,7 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
               Finaliser vit sur la page Pacts (PactCard), qui suit en live les
               approbations on-chain et ne s'active QUE quand tout le monde a dit
               oui — inutile de dupliquer cette logique ici. */}
-          <div className="rounded-lg border border-white/10 bg-base-900/40 p-3 text-left text-[11px] leading-snug text-ink-300">
+          <div className="rounded-lg border border-white/10 bg-canvas-900/40 p-3 text-left text-[11px] leading-snug text-ink-300">
             {t('createWizard.finalizeNote')}
           </div>
           <button

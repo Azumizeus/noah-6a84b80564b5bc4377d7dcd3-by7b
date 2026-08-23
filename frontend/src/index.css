@@ -16,7 +16,7 @@
   }
 
   body {
-    @apply bg-base text-ink-100 font-sans antialiased;
+    @apply bg-canvas text-ink-100 font-sans antialiased;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;

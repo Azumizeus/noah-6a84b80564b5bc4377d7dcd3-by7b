@@ -65,7 +65,7 @@ export function MediaPicker({ kind, label, hint, initialUrl, onChange }: Props) 
           `relative flex cursor-pointer items-center justify-center overflow-hidden rounded-xl border-2 border-dashed transition-colors ${aspectCls} ` +
           (dragOver
             ? 'border-accent-violet bg-violet-500/10'
-            : 'border-white/15 bg-base-900/40 hover:border-accent-violet/40')
+            : 'border-white/15 bg-canvas-900/40 hover:border-accent-violet/40')
         }
       >
         {preview ? (
