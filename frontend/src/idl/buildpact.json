@@ -739,6 +739,11 @@
       "code": 6020,
       "name": "MemberAlreadyApproved",
       "msg": "Cannot remove a member who already approved"
+    },
+    {
+      "code": 6021,
+      "name": "InvalidProtocolWallet",
+      "msg": "protocol_wallet must match the locked BuildPact protocol wallet"
     }
   ],
   "types": [
