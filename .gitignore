@@ -29,3 +29,5 @@ wallet.json
 target/wallet/
 archive/wallets/
 supabase/.temp/.DS_Store
+wallet-new.json
+logs/
