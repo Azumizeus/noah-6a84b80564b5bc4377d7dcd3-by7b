@@ -12,6 +12,7 @@ import { fetchProfilesByWallets } from '../lib/profileRemote';
 import type { BuilderProfile } from '../lib/profile';
 import {
   chatEnabled,
+  deleteChatMessage,
   fetchChatMessages,
   postChatMessage,
   subscribeToChatMessages,
@@ -21,11 +22,16 @@ import {
 
 interface Props {
   projectPda: string;
+  /** Wallet du founder — si présent et égal au wallet connecté, affiche un
+   *  bouton de suppression sur chaque message (modération founder-only). */
+  creatorWallet?: string;
 }
 
-export function ChatBox({ projectPda }: Props) {
+export function ChatBox({ projectPda, creatorWallet }: Props) {
   const { publicKey, connected } = useWallet();
   const { t, lang } = useLanguage();
+  const isCreator = !!publicKey && !!creatorWallet && publicKey.toBase58() === creatorWallet;
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const timeLabel = (iso: string): string => {
     const d = new Date(iso);
@@ -82,6 +88,15 @@ export function ChatBox({ projectPda }: Props) {
     setBody('');
   };
 
+  const handleDelete = async (id: number) => {
+    if (!window.confirm(lang === 'en' ? 'Delete this message?' : 'Supprimer ce message ?')) return;
+    setDeletingId(id);
+    const r = await deleteChatMessage(id);
+    setDeletingId(null);
+    if ('error' in r) { setError(r.error); return; }
+    setMessages((prev) => prev.filter((m) => m.id !== id));
+  };
+
   return (
     <div className="glass-panel flex flex-col p-4">
       <h3 className="mb-3 font-sans text-sm font-semibold text-white">{t('chat.heading')}</h3>
@@ -113,6 +128,17 @@ export function ChatBox({ projectPda }: Props) {
                 <span className="text-ink-500">· {timeLabel(m.createdAt)}</span>
                 <p className="mt-0.5 whitespace-pre-wrap text-ink-200">{m.body}</p>
               </div>
+              {isCreator && (
+                <button
+                  type="button"
+                  onClick={() => handleDelete(m.id)}
+                  disabled={deletingId === m.id}
+                  title={lang === 'en' ? 'Delete (founder)' : 'Supprimer (founder)'}
+                  className="shrink-0 text-ink-500 transition hover:text-red-400 disabled:opacity-40"
+                >
+                  {deletingId === m.id ? '…' : '×'}
+                </button>
+              )}
             </div>
           ))
         )}

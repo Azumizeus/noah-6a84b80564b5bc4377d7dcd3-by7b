@@ -148,7 +148,7 @@ export function PactPublicPage({ pda }: Props) {
             </FadeInUp>
 
             <FadeInUp>
-              <ChatBox projectPda={pact.pda.toBase58()} />
+              <ChatBox projectPda={pact.pda.toBase58()} creatorWallet={pact.creator.toBase58()} />
             </FadeInUp>
 
             <FadeInUp>

@@ -103,6 +103,21 @@ export async function fetchLatestChatTimestamp(projectPda: string): Promise<stri
   return data.created_at as string;
 }
 
+/**
+ * Supprime un message — founder-only, gate côté client dans ChatBox (même
+ * modèle de confiance que le reste : pas de vérification serveur de
+ * signature, la policy RLS DELETE est ouverte comme SELECT/INSERT).
+ */
+export async function deleteChatMessage(id: number): Promise<{ ok: true } | { error: string }> {
+  if (!supabase) return { error: tr('errors.notConfigured') };
+  const { error } = await supabase.from('project_chat_messages').delete().eq('id', id);
+  if (error) {
+    console.warn('[chat] delete error:', error.message);
+    return { error: 'Erreur lors de la suppression du message.' };
+  }
+  return { ok: true };
+}
+
 /** Souscrit aux nouveaux messages Realtime d'un projet. Retourne une fonction de désabonnement. */
 export function subscribeToChatMessages(
   projectPda: string,
