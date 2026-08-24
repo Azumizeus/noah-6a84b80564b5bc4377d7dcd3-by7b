@@ -821,6 +821,9 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
         <div className="space-y-4">
           <p className="text-sm text-green-400">{t('createWizard.projectCreated', { id: projectId })}</p>
           {createSig && <TxLink sig={createSig} label={t('createWizard.creationTxLabel')} />}
+          <div className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 p-3 text-left text-[11px] leading-relaxed text-emerald-200">
+            {t('createWizard.canCloseNow')}
+          </div>
           {mediaWarning && (
             <div className="rounded-lg border border-amber-400/40 bg-amber-500/10 p-3 text-left text-[11px] text-amber-200">
               ⚠️ {mediaWarning}
