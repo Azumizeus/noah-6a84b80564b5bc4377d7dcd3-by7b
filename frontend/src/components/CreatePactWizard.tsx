@@ -7,7 +7,7 @@ import { useAnchorProgram } from '../hooks/useProjects';
 import { parseTxError, explorerTxUrl } from '../lib/pacts';
 import { ROLE_GROUPS, ALL_ROLES, roleShortLabel, combineRoleLabels } from '../lib/roles';
 import { STAGE_CANONICAL, type PactStage } from '../lib/pitch';
-import { truncateUtf8 } from '../lib/textSafety';
+import { truncateUtf8, utf8ByteLength } from '../lib/textSafety';
 import { pactPublicUrl } from '../lib/router';
 import QrCode from './QrCode';
 import MediaPicker from './MediaPicker';
@@ -315,6 +315,27 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
     ...selectedRoles.map((id) => ALL_ROLES.find((r) => r.id === id)?.label ?? id),
     ...customRoles,
   ].join(' / ');
+
+  // ⚠️ Bug trouvé lors de l'audit du 24/08 : la description on-chain packée
+  // ([stage] pitch | Rôles créateur : ... | 💰 Seed founder : ...) est
+  // tronquée SILENCIEUSEMENT à 280 octets par truncateUtf8() dans
+  // handleCreate() — si le total dépasse, la fin (souvent la liste de rôles
+  // ou le seed) est coupée AU MILIEU D'UN MOT (ex: "UX/UI" → "UX/U"), et
+  // comme le programme n'a AUCUNE instruction update_description, c'est
+  // gravé on-chain de façon définitive. On avertit ici AVANT la création
+  // pour que le fondateur raccourcisse pitch/rôles/seed lui-même.
+  const previewStageLabel = stage ? STAGE_CANONICAL[stage as Exclude<PactStage, null>] : '';
+  const previewSeedInfo =
+    seedAmount && Number(seedAmount) > 0
+      ? ` | 💰 Seed founder : ${seedAmount} SOL (engagement annoncé)`
+      : '';
+  const previewFullDescription =
+    '[' + previewStageLabel + '] ' +
+    description +
+    ' | Rôles créateur : ' + myRoleLabel +
+    previewSeedInfo;
+  const descBytesUsed = utf8ByteLength(previewFullDescription);
+  const descWillTruncate = descBytesUsed > 280;
 
   const toggleRole = (id: string) => {
     const next = selectedRoles.includes(id)
@@ -804,6 +825,13 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
 
         </div>
         </div>
+
+          {descWillTruncate && (
+            <div className="mt-3 rounded-lg border border-red-400/40 bg-red-500/10 p-3 text-[11px] leading-snug text-red-300">
+              ⚠️ <strong>{t('createWizard.descTruncateWarning', { used: descBytesUsed })}</strong>{' '}
+              {t('createWizard.descTruncateBody')}
+            </div>
+          )}
 
           <button
             type="button"

@@ -7,12 +7,14 @@ import EmptyState from '../components/EmptyState';
 import TxBanner from '../components/TxBanner';
 import AppWalletButton from '../components/AppWalletButton';
 import { useProjects, usePactActions } from '../hooks/useProjects';
+import { useProjectMedia } from '../hooks/useProjectMedia';
 import { useLanguage } from '../lib/i18n/LanguageContext';
 
 export function DashboardPage() {
   const { connected, publicKey } = useWallet();
   const { t } = useLanguage();
   const { pacts, loading, error, refresh } = useProjects();
+  const { media, refresh: refreshMedia } = useProjectMedia();
   const { busyId, busyAction, txState, runDistribute, runFund, runFinalize, clearTxState } = usePactActions(refresh);
 
   const totalVault = pacts.reduce((s, p) => s + p.vaultBalanceSol, 0);
@@ -117,6 +119,8 @@ export function DashboardPage() {
                 onFund={runFund}
                 onFinalize={runFinalize}
                 clearTopBanner={clearTxState}
+                media={media.get(pact.pda.toBase58())}
+                onMediaUpdated={refreshMedia}
               />
             </FadeInUp>
           ))}

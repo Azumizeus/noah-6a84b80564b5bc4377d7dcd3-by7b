@@ -17,20 +17,15 @@ target/.rustc_info.json
 .DS_Store
 .vercel
 .env*
-target/wallet/
+
+# Build output — on garde uniquement l'IDL, le .so et la keypair du programme
 target/
 !target/idl/
 !target/deploy/*.so
 !target/deploy/*-keypair.json
+
+# Clés privées — ne JAMAIS committer
 wallet.json
+target/wallet/
 archive/wallets/
-supabase/.temp/
-wallet.json
-target/deploy/*.json
-*.keypair.json
-id.json
-.env
-.env.local
-wallet-new.json
-wallet-new.json
-logs/
+supabase/.temp/.DS_Store

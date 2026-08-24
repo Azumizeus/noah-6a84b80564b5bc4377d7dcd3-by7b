@@ -336,7 +336,11 @@ export function useTreasury(): TreasurySummary {
       setState((s) => ({ ...s, loading: true, error: null }));
       try {
         const raw = await fetchAllProjects(program);
-        const projects = raw as { publicKey: PublicKey; account: any }[];
+        // Même filtre que useProjects() — sinon les pacts de test (ex: "Café")
+        // remontent dans le TVL et le flux "Recent flows" du Treasury public,
+        // visible par les juges (voir audit UI/UX du 24/08).
+        const projects = (raw as { publicKey: PublicKey; account: any }[])
+          .filter((r) => !HIDDEN_PACT_PDAS.has(r.publicKey.toString()));
         const vaultPdas = projects.map((r) => findVaultPda(r.publicKey)[0]);
 
         // ─── TVL réel : solde live de chaque vault ───

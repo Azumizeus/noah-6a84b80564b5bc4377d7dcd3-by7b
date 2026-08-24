@@ -1,4 +1,3 @@
-// AUDIT.md
 # Accessibility Audit — BuildPact Dashboard
 
 ## Focus management

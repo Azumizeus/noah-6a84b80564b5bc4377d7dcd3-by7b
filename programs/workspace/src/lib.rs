@@ -5,35 +5,29 @@ declare_id!("9quyDwntXDBhNhTmrfCf7xEXVFaxYMB83BwPEUeqVoUJ");
 
 pub const PROTOCOL_FEE_BPS: u16 = 200; // 2%
 pub const TOTAL_BPS: u16 = 10000;
+
 // Wallet protocole verrouillé on-chain — doit être identique à PLATFORM_WALLET
 // dans frontend/src/components/CreatePactWizard.tsx. Avant ce fix, create_project
 // acceptait n'importe quel protocol_wallet fourni par l'appelant : le frontend
 // officiel envoyait toujours la bonne valeur, mais un appel direct au programme
 // (script, autre front) pouvait détourner les 2% de frais vers un autre wallet.
 pub const PROTOCOL_WALLET: Pubkey = pubkey!("AVhVM29hD6YRLb2DujhKfF8Ger4bgaCpx9P93Q3XBWSH");
+
 pub const MAX_PROJECT_ID_LEN: usize = 20;
 pub const MAX_TITLE_LEN: usize = 40;
 pub const MAX_DESC_LEN: usize = 280;
 pub const MAX_ROLE_LEN: usize = 24;
 pub const MAX_MEMBERS: usize = 8;
 
+// Trouvaille #2 audit Noah AI (24/08) : "Locked Funds Due to Inability to
+// Close Finalized Projects" — tolérance de poussière d'arrondi (bien en
+// dessous de tout montant réel) sous laquelle un pact finalisé est considéré
+// comme entièrement distribué et peut être fermé pour récupérer le loyer.
+pub const DUST_TOLERANCE_LAMPORTS: u64 = 1000; // 0.000001 SOL
+
 #[program]
 pub mod workspace {
     use super::*;
-
-    pub fn initialize_config(
-        ctx: Context<InitializeConfig>,
-        protocol_fee_bps: u16,
-    ) -> Result<()> {
-        let config = &mut ctx.accounts.config;
-        config.bump = ctx.bumps.config;
-        config.authority = ctx.accounts.authority.key();
-        config.is_active = true;
-        config.is_paused = false;
-        config.protocol_fee_bps = protocol_fee_bps;
-        config.version = 1;
-        Ok(())
-    }
 
     pub fn create_project(
         ctx: Context<CreateProject>,
@@ -67,6 +61,12 @@ pub mod workspace {
             share_bps: creator_share_bps,
             approved: true,
         }];
+
+        emit!(ProjectCreated {
+            project: project.key(),
+            creator: creator_key,
+            title: project.title.clone(),
+        });
 
         Ok(())
     }
@@ -105,6 +105,12 @@ pub mod workspace {
             approved: false,
         });
 
+        emit!(MemberAdded {
+            project: project.key(),
+            wallet,
+            share_bps,
+        });
+
         Ok(())
     }
 
@@ -123,6 +129,11 @@ pub mod workspace {
 
         project.members.remove(index);
 
+        emit!(MemberRemoved {
+            project: project.key(),
+            wallet: member_wallet,
+        });
+
         Ok(())
     }
 
@@ -138,6 +149,11 @@ pub mod workspace {
             .ok_or(ErrorCode::NotAMember)?;
         require!(!member.approved, ErrorCode::AlreadyApproved);
         member.approved = true;
+
+        emit!(MemberApproved {
+            project: project.key(),
+            wallet: member_key,
+        });
 
         Ok(())
     }
@@ -160,6 +176,10 @@ pub mod workspace {
 
         project.status = ProjectStatus::Finalized;
 
+        emit!(ProjectFinalized {
+            project: project.key(),
+        });
+
         Ok(())
     }
 
@@ -180,6 +200,11 @@ pub mod workspace {
             ),
             amount_lamports,
         )?;
+
+        emit!(ProjectFunded {
+            project: ctx.accounts.project.key(),
+            amount_lamports,
+        });
 
         Ok(())
     }
@@ -263,17 +288,38 @@ pub mod workspace {
             }
         }
 
+        emit!(FundsDistributed {
+            project: project_key,
+            fee_lamports: fee,
+            total_distributed_lamports: after_fee,
+        });
+
         Ok(())
     }
 
     pub fn close_project(ctx: Context<CloseProject>) -> Result<()> {
         let project = &ctx.accounts.project;
-        require!(
-            project.status != ProjectStatus::Finalized,
-            ErrorCode::AlreadyFinalized
-        );
-
         let vault_lamports = ctx.accounts.vault.lamports();
+
+        if project.status == ProjectStatus::Finalized {
+            // Trouvaille #2 audit Noah AI (24/08) : "Locked Funds Due to
+            // Inability to Close Finalized Projects" — avant ce fix, un pact
+            // finalisé ne pouvait JAMAIS être fermé, gelant loyer + poussière
+            // d'arrondi pour toujours. On autorise maintenant la fermeture
+            // d'un pact finalisé UNIQUEMENT si le vault ne contient plus que
+            // de la poussière (DUST_TOLERANCE_LAMPORTS, très en dessous de
+            // tout montant réel) — donc seulement après que distribute() a
+            // bien reversé les fonds aux membres. Un founder ne peut donc
+            // jamais fermer pour vider un vault qui contient encore de
+            // vraies sommes non distribuées : la require! ci-dessous bloque
+            // cet appel tant que ce n'est pas le cas.
+            let rent_min = Rent::get()?.minimum_balance(0);
+            let threshold = rent_min
+                .checked_add(DUST_TOLERANCE_LAMPORTS)
+                .ok_or(ErrorCode::MathOverflow)?;
+            require!(vault_lamports <= threshold, ErrorCode::VaultNotEmpty);
+        }
+
         if vault_lamports > 0 {
             let project_key = ctx.accounts.project.key();
             let bump_arr = [ctx.bumps.vault];
@@ -293,23 +339,22 @@ pub mod workspace {
             )?;
         }
 
+        emit!(ProjectClosed {
+            project: ctx.accounts.project.key(),
+        });
+
         Ok(())
     }
 }
 
-#[account]
-pub struct Config {
-    pub bump: u8,
-    pub authority: Pubkey,
-    pub is_active: bool,
-    pub is_paused: bool,
-    pub protocol_fee_bps: u16,
-    pub version: u8,
-}
-
-impl Config {
-    pub const LEN: usize = 1 + 32 + 1 + 1 + 2 + 1;
-}
+// Trouvaille #1 audit Noah AI (24/08) : "Unused Global Configuration and Dead
+// Code" — le compte Config (initialize_config) était créé mais jamais lu par
+// aucune instruction (create_project/distribute utilisaient déjà les
+// constantes codées en dur ci-dessus). Supprimé plutôt que branché : les
+// constantes sont volontairement immuables pour ce hackathon, dynamiser la
+// config est hors scope V1. Anciens comptes Config déjà créés on-chain
+// (5yRNQhn7W6sCFNVWhTWbZowQRKL7dNSaqYkpTtPxEF2C) restent orphelins mais
+// inoffensifs — plus aucune instruction n'y fait référence.
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
 pub enum ProjectStatus {
@@ -351,23 +396,6 @@ impl Project {
         + 1
         + 32
         + 1;
-}
-
-#[derive(Accounts)]
-pub struct InitializeConfig<'info> {
-    #[account(
-        init,
-        seeds = [b"config", authority.key().as_ref()],
-        bump,
-        payer = authority,
-        space = 8 + Config::LEN
-    )]
-    pub config: Account<'info, Config>,
-
-    #[account(mut)]
-    pub authority: Signer<'info>,
-
-    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
@@ -508,6 +536,59 @@ pub struct CloseProject<'info> {
     pub system_program: Program<'info, System>,
 }
 
+// Trouvaille #4 audit Noah AI (24/08) : "Missing On-Chain Event Emissions" —
+// événements pour chaque changement d'état important, pour permettre à un
+// indexeur/frontend de s'abonner au lieu de parser les logs ou poller les
+// comptes en continu.
+#[event]
+pub struct ProjectCreated {
+    pub project: Pubkey,
+    pub creator: Pubkey,
+    pub title: String,
+}
+
+#[event]
+pub struct MemberAdded {
+    pub project: Pubkey,
+    pub wallet: Pubkey,
+    pub share_bps: u16,
+}
+
+#[event]
+pub struct MemberRemoved {
+    pub project: Pubkey,
+    pub wallet: Pubkey,
+}
+
+#[event]
+pub struct MemberApproved {
+    pub project: Pubkey,
+    pub wallet: Pubkey,
+}
+
+#[event]
+pub struct ProjectFinalized {
+    pub project: Pubkey,
+}
+
+#[event]
+pub struct ProjectFunded {
+    pub project: Pubkey,
+    pub amount_lamports: u64,
+}
+
+#[event]
+pub struct FundsDistributed {
+    pub project: Pubkey,
+    pub fee_lamports: u64,
+    pub total_distributed_lamports: u64,
+}
+
+#[event]
+pub struct ProjectClosed {
+    pub project: Pubkey,
+}
+
 #[error_code]
 pub enum ErrorCode {
     #[msg("Math overflow occurred")]
@@ -554,4 +635,6 @@ pub enum ErrorCode {
     MemberAlreadyApproved,
     #[msg("protocol_wallet must match the locked BuildPact protocol wallet")]
     InvalidProtocolWallet,
+    #[msg("A finalized project can only be closed once its vault is fully distributed")]
+    VaultNotEmpty,
 }
