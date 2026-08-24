@@ -27,7 +27,10 @@ export function useAnchorProgram(): Program {
 }
 
 /** Pacts de test technique à ne jamais montrer publiquement (voir audit UI/UX #3) */
-const HIDDEN_PACT_PDAS = new Set(['2n32pfWXDbYLLzy9ky3vj6xH4PFM2S7EXAGqsF83aLqc']);
+const HIDDEN_PACT_PDAS = new Set([
+  '2n32pfWXDbYLLzy9ky3vj6xH4PFM2S7EXAGqsF83aLqc', // Nexus Markdown Ünïcode (test)
+  'FBHXCus7YeeXNC9ZuRnhePvkyW798wetc3dA4x5Zg2Zc', // Café (test)
+]);
 
 /** Charge TOUS les projets on-chain + balances des vaults (1 seul appel RPC batch) */
 export function useProjects() {
