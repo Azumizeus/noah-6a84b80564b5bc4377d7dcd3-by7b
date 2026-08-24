@@ -32,6 +32,7 @@ export interface ProjectMedia {
   bannerUrl: string | null;
   pitchVideoUrl: string | null;
   aboutText: string | null;
+  aboutTextEn: string | null;
 }
 
 const BUCKET = 'project-media';
@@ -111,6 +112,7 @@ function fromRemote(row: Record<string, unknown>): ProjectMedia {
     bannerUrl: (row.banner_url as string | null) ?? null,
     pitchVideoUrl: (row.pitch_video_url as string | null) ?? null,
     aboutText: (row.about_text as string | null) ?? null,
+    aboutTextEn: (row.about_text_en as string | null) ?? null,
   };
 }
 
@@ -222,21 +224,29 @@ export function validateAboutText(text: string): string | null {
   return null;
 }
 
-/** Enregistre (ou efface, si texte vide) la présentation longue "À propos" d'un projet. */
+/**
+ * Enregistre (ou efface, si vide) la présentation longue "À propos" d'un
+ * projet, dans les deux langues en un seul upsert — le champ non modifié
+ * est simplement réécrit avec sa valeur courante (no-op côté data).
+ */
 export async function setProjectAbout(
   projectPda: string,
-  text: string
+  textFr: string,
+  textEn: string
 ): Promise<{ ok: true } | { error: string }> {
   if (!supabase) return { error: tr('errors.notConfigured') };
-  const invalid = validateAboutText(text);
-  if (invalid) return { error: invalid };
+  const invalidFr = validateAboutText(textFr);
+  if (invalidFr) return { error: invalidFr };
+  const invalidEn = validateAboutText(textEn);
+  if (invalidEn) return { error: invalidEn };
 
   const { error } = await supabase
     .from('project_media')
     .upsert(
       {
         project_pda: projectPda,
-        about_text: text.trim() || null,
+        about_text: textFr.trim() || null,
+        about_text_en: textEn.trim() || null,
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'project_pda' }

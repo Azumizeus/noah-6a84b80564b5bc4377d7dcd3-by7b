@@ -17,6 +17,7 @@ interface Props {
   currentBannerUrl?: string | null;
   currentVideoUrl?: string | null;
   currentAboutText?: string | null;
+  currentAboutTextEn?: string | null;
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -28,6 +29,7 @@ export default function EditMediaModal({
   currentBannerUrl,
   currentVideoUrl,
   currentAboutText,
+  currentAboutTextEn,
   onClose,
   onSuccess,
 }: Props) {
@@ -36,6 +38,7 @@ export default function EditMediaModal({
   const [bannerFile, setBannerFile] = useState<File | null>(null);
   const [videoUrl, setVideoUrl] = useState(currentVideoUrl ?? '');
   const [aboutText, setAboutText] = useState(currentAboutText ?? '');
+  const [aboutTextEn, setAboutTextEn] = useState(currentAboutTextEn ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
@@ -44,14 +47,16 @@ export default function EditMediaModal({
   const videoError = videoChanged ? validateVideoUrl(videoUrl) : null;
   const aboutChanged = aboutText.trim() !== (currentAboutText ?? '').trim();
   const aboutError = aboutChanged ? validateAboutText(aboutText) : null;
+  const aboutEnChanged = aboutTextEn.trim() !== (currentAboutTextEn ?? '').trim();
+  const aboutEnError = aboutEnChanged ? validateAboutText(aboutTextEn) : null;
 
   const handleSave = async () => {
-    if (!logoFile && !bannerFile && !videoChanged && !aboutChanged) {
+    if (!logoFile && !bannerFile && !videoChanged && !aboutChanged && !aboutEnChanged) {
       onClose();
       return;
     }
-    if (videoError || aboutError) {
-      setError(videoError || aboutError);
+    if (videoError || aboutError || aboutEnError) {
+      setError(videoError || aboutError || aboutEnError);
       return;
     }
     setSaving(true);
@@ -70,8 +75,8 @@ export default function EditMediaModal({
       const r = await setProjectVideo(projectPda, videoUrl);
       if ('error' in r) failures.push(`Vidéo : ${r.error}`);
     }
-    if (aboutChanged) {
-      const r = await setProjectAbout(projectPda, aboutText);
+    if (aboutChanged || aboutEnChanged) {
+      const r = await setProjectAbout(projectPda, aboutText, aboutTextEn);
       if ('error' in r) failures.push(`À propos : ${r.error}`);
     }
 
@@ -134,7 +139,7 @@ export default function EditMediaModal({
 
           <div>
             <label htmlFor="about-text" className="mb-1 block text-sm font-medium text-white">
-              À propos du projet (présentation longue)
+              À propos du projet — Français
             </label>
             <textarea
               id="about-text"
@@ -146,10 +151,31 @@ export default function EditMediaModal({
               className="w-full resize-y rounded-lg border border-purple-500/30 bg-black/50 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-purple-500 focus:outline-none"
             />
             <p className="mt-1 text-[11px] text-gray-500">
-              {aboutText.length}/4000 caractères — modifiable à tout moment, même après finalisation.
+              {aboutText.length}/4000 caractères — affiché quand l'app est en français.
             </p>
             {aboutChanged && aboutError && (
               <p className="mt-1 text-[11px] text-red-400">{aboutError}</p>
+            )}
+          </div>
+
+          <div>
+            <label htmlFor="about-text-en" className="mb-1 block text-sm font-medium text-white">
+              About the project — English
+            </label>
+            <textarea
+              id="about-text-en"
+              value={aboutTextEn}
+              onChange={(e) => setAboutTextEn(e.target.value)}
+              placeholder="Describe your project in detail: context, roadmap, why invest..."
+              maxLength={4000}
+              rows={6}
+              className="w-full resize-y rounded-lg border border-purple-500/30 bg-black/50 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-purple-500 focus:outline-none"
+            />
+            <p className="mt-1 text-[11px] text-gray-500">
+              {aboutTextEn.length}/4000 characters — shown when the app is in English. Leave empty to fall back to the French version.
+            </p>
+            {aboutEnChanged && aboutEnError && (
+              <p className="mt-1 text-[11px] text-red-400">{aboutEnError}</p>
             )}
           </div>
         </div>
@@ -178,7 +204,7 @@ export default function EditMediaModal({
             <button
               type="button"
               onClick={handleSave}
-              disabled={saving || (!logoFile && !bannerFile && !videoChanged && !aboutChanged)}
+              disabled={saving || (!logoFile && !bannerFile && !videoChanged && !aboutChanged && !aboutEnChanged)}
               className="flex-1 bg-purple-600 hover:bg-purple-500 text-white rounded-lg py-2 text-sm font-medium disabled:opacity-50"
             >
               {saving ? t('editMedia.saving') : t('editMedia.save')}

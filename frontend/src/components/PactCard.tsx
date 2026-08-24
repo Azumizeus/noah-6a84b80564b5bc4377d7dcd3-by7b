@@ -106,7 +106,7 @@ export default function PactCard({
   showOpenSheetButton = true,
 }: Props) {
   const { publicKey } = useWallet();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const program = useAnchorProgram();
   const [fundAmount, setFundAmount] = useState('0.1');
   const [showAddMember, setShowAddMember] = useState(false);
@@ -360,14 +360,26 @@ export default function PactCard({
             )}
           </div>
         )}
-        {isDetailView && media?.aboutText && (
-          <div className="mb-4 border-t border-white/5 pt-4">
-            <h4 className="mb-2 font-sans text-sm font-semibold text-white">À propos</h4>
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink-300">
-              {media.aboutText}
-            </p>
-          </div>
-        )}
+        {isDetailView && (() => {
+          // Bascule FR/EN sur le sélecteur de langue de l'app — si la traduction
+          // anglaise n'a pas été remplie par le founder, on retombe sur le
+          // français plutôt que de laisser un juge anglophone sans rien.
+          const aboutForLang =
+            lang === 'en'
+              ? media?.aboutTextEn || media?.aboutText
+              : media?.aboutText || media?.aboutTextEn;
+          if (!aboutForLang) return null;
+          return (
+            <div className="mb-4 border-t border-white/5 pt-4">
+              <h4 className="mb-2 font-sans text-sm font-semibold text-white">
+                {lang === 'en' ? 'About' : 'À propos'}
+              </h4>
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink-300">
+                {aboutForLang}
+              </p>
+            </div>
+          );
+        })()}
         {isDetailView && (
           <div className="mb-4 border-t border-white/5 pt-4">
             <PactTimeline pact={pact} hasReceipt={!!receipt} />
@@ -732,6 +744,7 @@ export default function PactCard({
           currentBannerUrl={media?.bannerUrl}
           currentVideoUrl={media?.pitchVideoUrl}
           currentAboutText={media?.aboutText}
+          currentAboutTextEn={media?.aboutTextEn}
           onClose={() => setShowEditMedia(false)}
           onSuccess={() => {
             setShowEditMedia(false);
