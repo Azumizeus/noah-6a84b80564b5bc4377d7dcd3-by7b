@@ -33,3 +33,4 @@ id.json
 .env.local
 wallet-new.json
 wallet-new.json
+logs/
