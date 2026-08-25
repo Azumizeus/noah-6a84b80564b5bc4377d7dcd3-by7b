@@ -12,6 +12,7 @@ import { pactPublicUrl } from '../lib/router';
 import QrCode from './QrCode';
 import MediaPicker from './MediaPicker';
 import { uploadProjectMedia, mediaEnabled } from '../lib/media';
+import { saveOpenRoles, MAX_OPEN_ROLES } from '../lib/openRoles';
 import { useLanguage } from '../lib/i18n/LanguageContext';
 
 // ═══ Lien Explorer après chaque transaction — important pour la démo devant les juges ═══
@@ -97,6 +98,7 @@ interface PactDraft {
   description: string;
   selectedRoles: string[];
   customRoles: string[];
+  wantedRoles: string[]; // rôles recherchés (labels) — ajouté le 25/08, d'où le ?? [] à la restauration
   myShare: number;
   shareTouched: boolean;
   stage: string;
@@ -178,7 +180,7 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
     { id: 'both', label: t('createWizard.stageBoth') },
   ] as const;
   const STEP_LABELS = [t('createWizard.stepProject'), t('createWizard.stepMembers'), t('createWizard.stepFinalize')];
-  const { publicKey } = useWallet();
+  const { publicKey, signMessage } = useWallet();
   const program = useAnchorProgram();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -193,6 +195,10 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
   const [selectedRoles, setSelectedRoles] = useState<string[]>(['founder']);
   const [customRole, setCustomRole] = useState('');
   const [customRoles, setCustomRoles] = useState<string[]>([]);
+  // Rôles RECHERCHÉS (ce que le founder veut recruter) — off-chain, labels
+  // affichés publiquement. Distinct de selectedRoles (rôles du founder lui-même).
+  const [wantedRoles, setWantedRoles] = useState<string[]>([]);
+  const [wantedCustomRole, setWantedCustomRole] = useState('');
   const [myShare, setMyShare] = useState(30);
   const [shareTouched, setShareTouched] = useState(false);
   const [stage, setStage] = useState<string>('both');
@@ -226,7 +232,7 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
     // Ne sauvegarde que si quelque chose a été saisi
     if (!title && step === 1) return;
     const draft: PactDraft = {
-      step, title, description, selectedRoles, customRoles,
+      step, title, description, selectedRoles, customRoles, wantedRoles,
       myShare, shareTouched, stage, seedAmount, members,
       projectId,
       projectPda: projectPda ? projectPda.toBase58() : '',
@@ -235,7 +241,7 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
     try {
       localStorage.setItem(draftKey(publicKey.toBase58()), JSON.stringify(draft));
     } catch { /* quota plein : non bloquant */ }
-  }, [publicKey, step, title, description, selectedRoles, customRoles,
+  }, [publicKey, step, title, description, selectedRoles, customRoles, wantedRoles,
       myShare, shareTouched, stage, seedAmount, members, projectId, projectPda]);
 
   const clearDraft = () => {
@@ -251,6 +257,7 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
     setDescription(pendingDraft.description);
     setSelectedRoles(pendingDraft.selectedRoles);
     setCustomRoles(pendingDraft.customRoles);
+    setWantedRoles(pendingDraft.wantedRoles ?? []); // brouillons d'avant le 25/08 n'ont pas ce champ
     setMyShare(pendingDraft.myShare);
     setShareTouched(pendingDraft.shareTouched);
     setStage(pendingDraft.stage);
@@ -361,6 +368,26 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
     if (!shareTouched) setMyShare(suggestShare(selectedRoles, next.length, stage));
   };
 
+  // ═══ Rôles RECHERCHÉS — pas de lien avec la part suggérée (contrairement
+  // aux rôles du founder), juste une liste publique bornée à MAX_OPEN_ROLES ═══
+  const toggleWantedRole = (label: string) => {
+    setWantedRoles((prev) =>
+      prev.includes(label)
+        ? prev.filter((r) => r !== label)
+        : prev.length >= MAX_OPEN_ROLES
+          ? prev
+          : [...prev, label]
+    );
+  };
+
+  const addWantedCustomRole = () => {
+    const v = wantedCustomRole.trim();
+    if (v && !wantedRoles.some((r) => r.toLowerCase() === v.toLowerCase()) && wantedRoles.length < MAX_OPEN_ROLES) {
+      setWantedRoles((prev) => [...prev, v]);
+    }
+    setWantedCustomRole('');
+  };
+
   const handleStage = (id: string) => {
     setStage(id);
     if (!shareTouched) setMyShare(suggestShare(selectedRoles, customRoles.length, id));
@@ -429,6 +456,26 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
         setMediaWarning(
           mediaFailures.join(' — ') + ' (le projet est bien créé — réessaie depuis "Modifier les médias" sur sa carte)'
         );
+      }
+
+      // Rôles recherchés APRÈS la création : il faut le PDA on-chain comme clé
+      // (project_open_roles.project_pda) + une signature signMessage (l'Edge
+      // Function vérifie que le signataire est project.creator on-chain).
+      // NON BLOQUANT — si la signature est refusée ou l'appel échoue, le pact
+      // existe déjà ; le founder pourra définir ses rôles depuis la fiche pact.
+      if (wantedRoles.length > 0) {
+        if (signMessage) {
+          const r = await saveOpenRoles(publicKey.toBase58(), signMessage, pda.toBase58(), wantedRoles);
+          if ('error' in r) {
+            setMediaWarning((prev) =>
+              (prev ? prev + ' · ' : '') + t('createWizard.wantedRolesSaveFailed')
+            );
+          }
+        } else {
+          setMediaWarning((prev) =>
+            (prev ? prev + ' · ' : '') + t('createWizard.wantedRolesSaveFailed')
+          );
+        }
       }
 
       setStep(2);
@@ -759,6 +806,82 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
               <small className="mt-1 block text-[11px] text-red-400">
                 {t('createWizard.selectAtLeastOneRole')}
               </small>
+            )}
+          </div>
+
+          {/* RÔLES RECHERCHÉS — ce que le founder veut recruter. OPTIONNEL,
+              affiché publiquement (Marketplace, fiche pact, modale Postuler).
+              Stocké off-chain (project_open_roles) après la création — voir
+              handleCreate : la description on-chain (280 octets) ne peut pas
+              contenir cette liste en plus du pitch + rôles founder + seed. */}
+          <div>
+            <span id="pact-wanted-roles-label" className={labelCls}>
+              {t('createWizard.wantedRolesLabel')}
+              <span className="ml-2 text-[11px] font-normal text-ink-400">
+                {wantedRoles.length}/{MAX_OPEN_ROLES}
+              </span>
+            </span>
+            <small className={hintCls}>
+              {t('createWizard.wantedRolesHint')}
+            </small>
+
+            {ROLE_GROUPS.map((group) => (
+              <div key={group.category} className="mt-2">
+                <p className="mb-1 text-[10px] uppercase tracking-wider text-ink-400">
+                  {group.category}
+                </p>
+                <div role="group" aria-labelledby="pact-wanted-roles-label" className="flex flex-wrap gap-2">
+                  {group.roles.map((r) => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => toggleWantedRole(r.label)}
+                      disabled={!wantedRoles.includes(r.label) && wantedRoles.length >= MAX_OPEN_ROLES}
+                      className={
+                        'rounded-full border px-3 py-1 text-xs transition-colors disabled:opacity-40 ' +
+                        (wantedRoles.includes(r.label)
+                          ? 'border-accent-neon/60 bg-emerald-500/20 text-white'
+                          : 'border-white/10 text-ink-300 hover:text-white')
+                      }
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+
+            {/* Rôle recherché custom */}
+            <div className="mt-3 flex gap-2">
+              <input
+                className={inputCls}
+                placeholder={t('createWizard.wantedCustomRolePlaceholder')}
+                value={wantedCustomRole}
+                onChange={(e) => setWantedCustomRole(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addWantedCustomRole(); } }}
+              />
+              <button
+                type="button"
+                onClick={addWantedCustomRole}
+                disabled={wantedRoles.length >= MAX_OPEN_ROLES}
+                className="whitespace-nowrap rounded border border-accent-neon/40 bg-emerald-500/10 px-3 text-xs text-accent-neon hover:bg-emerald-500/20 disabled:opacity-40"
+              >
+                {t('createWizard.addRole')}
+              </button>
+            </div>
+            {wantedRoles.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {wantedRoles.map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => toggleWantedRole(r)}
+                    className="rounded-full border border-accent-neon/50 bg-emerald-500/15 px-3 py-1 text-xs text-white"
+                  >
+                    {r} ✕
+                  </button>
+                ))}
+              </div>
             )}
           </div>
 

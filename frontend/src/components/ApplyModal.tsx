@@ -7,17 +7,18 @@
 // ═══════════════════════════════════════════════════════════════════
 import { useState } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { ROLE_GROUPS } from '../lib/roles';
+import { ROLE_GROUPS, ALL_ROLES } from '../lib/roles';
 import { submitApplication, applicationsEnabled } from '../lib/applications';
 import { useLanguage } from '../lib/i18n/LanguageContext';
 
 interface Props {
   projectPda: string;
   projectTitle: string;
+  wantedRoles?: string[]; // rôles recherchés déclarés par le founder (off-chain)
   onClose: () => void;
 }
 
-export default function ApplyModal({ projectPda, projectTitle, onClose }: Props) {
+export default function ApplyModal({ projectPda, projectTitle, wantedRoles, onClose }: Props) {
   const { publicKey } = useWallet();
   const { t } = useLanguage();
   const [roleId, setRoleId] = useState('');
@@ -31,6 +32,20 @@ export default function ApplyModal({ projectPda, projectTitle, onClose }: Props)
     roleId === 'custom'
       ? customRole.trim()
       : (ROLE_GROUPS.flatMap((g) => g.roles).find((r) => r.id === roleId)?.label ?? '');
+
+  // Clic sur un rôle recherché : pré-remplit le formulaire. Si le label
+  // correspond à un rôle connu (même texte) on sélectionne l'id, sinon on
+  // bascule en "Autre" avec le texte du rôle recherché.
+  const pickWantedRole = (label: string) => {
+    const known = ALL_ROLES.find((r) => r.label === label);
+    if (known) {
+      setRoleId(known.id);
+      setCustomRole('');
+    } else {
+      setRoleId('custom');
+      setCustomRole(label);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!publicKey) {
@@ -89,6 +104,32 @@ export default function ApplyModal({ projectPda, projectTitle, onClose }: Props)
           </div>
         ) : (
           <>
+            {/* Rôles recherchés par le founder — cliquer pré-remplit le
+                formulaire. Le candidat garde le choix libre en dessous (un
+                founder peut accepter un profil non listé). */}
+            {wantedRoles && wantedRoles.length > 0 && (
+              <div className="mb-4">
+                <p className="mb-1.5 text-xs text-gray-400">{t('apply.wantedRolesLabel')}</p>
+                <div className="flex flex-wrap gap-2">
+                  {wantedRoles.map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => pickWantedRole(r)}
+                      className={
+                        'rounded-full border px-3 py-1 text-xs transition-colors ' +
+                        (roleWanted === r
+                          ? 'border-accent-neon/60 bg-emerald-500/20 text-white'
+                          : 'border-purple-500/30 bg-purple-500/10 text-purple-300 hover:bg-purple-500/20 hover:text-white')
+                      }
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <label htmlFor="apply-role" className="mb-1 block text-xs text-gray-400">
               {t('apply.roleLabel')}
             </label>

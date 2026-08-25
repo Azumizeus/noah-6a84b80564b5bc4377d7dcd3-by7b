@@ -14,6 +14,7 @@ import EmptyState from '../components/EmptyState';
 import StatsCard from '../components/StatsCard';
 import { useProjects } from '../hooks/useProjects';
 import { useProjectMedia } from '../hooks/useProjectMedia';
+import { useOpenRoles } from '../hooks/useOpenRoles';
 import type { ChainPact } from '../lib/pacts';
 import { useLanguage } from '../lib/i18n/LanguageContext';
 
@@ -36,6 +37,7 @@ export function MarketplacePage() {
   ];
   const { pacts, loading, error } = useProjects();
   const { media } = useProjectMedia();
+  const { openRoles } = useOpenRoles();
   const [filter, setFilter] = useState<Filter>('all');
   const [page, setPage] = useState(1);
   const [applyTarget, setApplyTarget] = useState<ChainPact | null>(null);
@@ -133,7 +135,7 @@ export function MarketplacePage() {
           <section aria-label="Projets" className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {pageItems.map((pact) => (
               <FadeInUp key={pact.pda.toBase58()}>
-                <MarketplaceCard pact={pact} onApply={setApplyTarget} media={media.get(pact.pda.toBase58())} />
+                <MarketplaceCard pact={pact} onApply={setApplyTarget} media={media.get(pact.pda.toBase58())} openRoles={openRoles.get(pact.pda.toBase58())} />
               </FadeInUp>
             ))}
           </section>
@@ -192,6 +194,7 @@ export function MarketplacePage() {
         <ApplyModal
           projectPda={applyTarget.pda.toBase58()}
           projectTitle={applyTarget.title}
+          wantedRoles={openRoles.get(applyTarget.pda.toBase58())}
           onClose={() => setApplyTarget(null)}
         />
       )}

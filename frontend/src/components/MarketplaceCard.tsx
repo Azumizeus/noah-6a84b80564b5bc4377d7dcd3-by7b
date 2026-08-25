@@ -16,6 +16,7 @@ interface Props {
   pact: ChainPact;
   onApply: (pact: ChainPact) => void;
   media?: ProjectMedia;
+  openRoles?: string[]; // rôles recherchés (off-chain) — absents sur les anciens pacts
 }
 const SHARE_COLORS = ['#8B5CF6', '#34D399', '#F59E0B', '#EC4899', '#3B82F6', '#EF4444'];
 
@@ -29,7 +30,7 @@ function fallbackBannerStyle(seed: string): React.CSSProperties {
   return { background: `linear-gradient(135deg, hsl(${hue1} 70% 22%), hsl(${hue2} 70% 14%))` };
 }
 
-export function MarketplaceCard({ pact, onApply, media }: Props) {
+export function MarketplaceCard({ pact, onApply, media, openRoles }: Props) {
   const { publicKey } = useWallet();
   const { t } = useLanguage();
   const parsed = parsePitch(pact.description);
@@ -94,6 +95,14 @@ export function MarketplaceCard({ pact, onApply, media }: Props) {
             <span className="inline-block rounded-full bg-violet-500/10 px-2.5 py-1 text-[11px] font-medium text-accent-violet">
               {stageBadgeLabel(parsed.stage)}
             </span>
+          )}
+          {/* Rôles RECHERCHÉS (off-chain, déclarés par le founder) — l'info
+              clé pour un candidat. Les anciens pacts n'en ont pas : on tombe
+              alors sur la ligne "rôles du founder" ci-dessous, inchangée. */}
+          {openRoles && openRoles.length > 0 && (
+            <p className="text-xs text-ink-400">
+              <span className="text-accent-neon">{t('marketplaceCard.lookingFor')}</span>{openRoles.join(' · ')}
+            </p>
           )}
           {parsed.rolesWanted && (
             <p className="text-xs text-ink-400">

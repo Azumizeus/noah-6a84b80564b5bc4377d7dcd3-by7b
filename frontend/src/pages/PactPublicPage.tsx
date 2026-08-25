@@ -11,6 +11,7 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { DashboardLayout, FadeInUp } from '../components/DashboardLayout';
 import AppWalletButton from '../components/AppWalletButton';
 import PactCard from '../components/PactCard';
+import OpenRolesPanel from '../components/OpenRolesPanel';
 import EmptyState from '../components/EmptyState';
 import QrCode from '../components/QrCode';
 import ActivityFeed from '../components/ActivityFeed';
@@ -113,6 +114,12 @@ export function PactPublicPage({ pda }: Props) {
                 media={media}
                 onMediaUpdated={refreshMedia}
                 showOpenSheetButton={false}
+              />
+            </FadeInUp>
+            <FadeInUp>
+              <OpenRolesPanel
+                projectPda={pact.pda.toBase58()}
+                creatorWallet={pact.creator.toBase58()}
               />
             </FadeInUp>
           </div>
