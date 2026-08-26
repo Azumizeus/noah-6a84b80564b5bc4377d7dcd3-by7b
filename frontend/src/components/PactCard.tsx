@@ -355,7 +355,7 @@ export default function PactCard({
             </p>
             {parsed.rolesWanted && (
               <p className="text-xs text-ink-400">
-                <span className="text-ink-300">Rôles recherchés : </span>{parsed.rolesWanted}
+                <span className="text-ink-300">{t('pactCard.rolesWanted')} </span>{parsed.rolesWanted}
               </p>
             )}
           </div>

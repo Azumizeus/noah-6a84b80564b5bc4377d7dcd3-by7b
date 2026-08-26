@@ -48,7 +48,7 @@ export function MarketplaceCard({ pact, onApply, media, openRoles }: Props) {
     <article className="glass-panel flex h-full flex-col overflow-hidden rounded-2xl border border-white/5 p-6 transition-all hover:border-accent-violet/20">
       {media?.bannerUrl ? (
         <div className="-mx-6 -mt-6 mb-4 h-24 w-[calc(100%+3rem)]">
-          <img src={media.bannerUrl} alt="" className="h-full w-full object-cover" />
+         <img src={media.bannerUrl} alt="" className="h-full w-full object-cover" />
         </div>
       ) : (
         <div
