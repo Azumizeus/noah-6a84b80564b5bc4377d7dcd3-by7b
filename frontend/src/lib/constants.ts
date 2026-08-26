@@ -4,14 +4,13 @@ export const PROGRAM_ID = new PublicKey('9quyDwntXDBhNhTmrfCf7xEXVFaxYMB83BwPEUe
 
 // ═══ RPC avec fallback — Helius (dédié) → Ankr → Solana officiel ═══
 // Helius = node unique, pas de load balancer → fix "Blockhash not found"
-const HELIUS_RPC = 'https://devnet.helius-rpc.com/?api-key=fc3853b9-07dd-4f31-9ba3-af7d0ddf8ecc';
+const DEDICATED_RPC = (import.meta.env.VITE_RPC_ENDPOINT as string) || '';
 
 export const RPC_ENDPOINTS: string[] = [
-  (import.meta.env.VITE_RPC_ENDPOINT as string) || HELIUS_RPC,
+  DEDICATED_RPC,
   'https://rpc.ankr.com/solana_devnet',
   'https://api.devnet.solana.com',
 ].filter(Boolean) as string[];
-
 export const RPC_ENDPOINT = RPC_ENDPOINTS[0];
 
 let currentIndex = 0;
