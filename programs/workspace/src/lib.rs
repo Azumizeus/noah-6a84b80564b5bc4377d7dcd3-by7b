@@ -1,5 +1,12 @@
 use anchor_lang::prelude::*;
 use anchor_lang::system_program::{transfer, Transfer};
+// Financement multi-token (30/08, PROPOSITION voir MULTI_TOKEN_FUNDING_PLAN.md,
+// GO explicite utilisateur pour l'écriture du code — PAS pour le déploiement,
+// qui reste une étape séparée). anchor-spl est déjà dans Cargo.toml (0.31.1,
+// idl-build déjà câblé) mais n'était utilisée nulle part dans ce fichier
+// jusqu'ici — voir le commentaire du manifeste : l'ajouter ici la fait enfin
+// entrer dans le binaire lié.
+use anchor_spl::token::{self, Mint, Token, TokenAccount};
 
 declare_id!("9quyDwntXDBhNhTmrfCf7xEXVFaxYMB83BwPEUeqVoUJ");
 
@@ -14,9 +21,61 @@ pub const TOTAL_BPS: u16 = 10000;
 pub const PROTOCOL_WALLET: Pubkey = pubkey!("AVhVM29hD6YRLb2DujhKfF8Ger4bgaCpx9P93Q3XBWSH");
 
 pub const MAX_PROJECT_ID_LEN: usize = 20;
-pub const MAX_TITLE_LEN: usize = 40;
-pub const MAX_DESC_LEN: usize = 280;
-pub const MAX_ROLE_LEN: usize = 24;
+
+// ---------------------------------------------------------------------------
+// Upgrade 27/08 — extension des bornes de texte.
+//
+// Rappel Borsh : une String est sérialisée en [4 octets de longueur][octets].
+// Les champs ne sont donc PAS à offsets fixes, et augmenter une borne ne
+// modifie que le `space` alloué à l'init. Les comptes Project déjà créés
+// restent parfaitement désérialisables par cette version du programme : le
+// changement est additif, aucune migration de données n'est nécessaire.
+//
+// Toutes ces constantes comptent des OCTETS UTF-8, pas des caractères.
+// Un « é » vaut 2 octets, un emoji jusqu'à 4.
+//
+// PLAFOND RÉEL : une transaction Solana est limitée à 1232 octets TOUT
+// COMPRIS — signatures, en-tête, liste des comptes, données d'instruction.
+// Sur create_project, une fois retirés la signature, les comptes et les
+// autres arguments (project_id, title, creator_role, protocol_wallet), il
+// reste de l'ordre de 900 octets utilisables pour la description, et moins
+// encore sur les instructions qui manipulent un Vec<Member> rempli.
+//
+// Toute borne au-delà de ~800 octets est donc de la place payée en rent mais
+// physiquement INATTEIGNABLE : ni create_project ni update_description ne
+// peuvent transporter la donnée. C'est la contrainte qui commande ici, pas
+// le coût du rent.
+// ---------------------------------------------------------------------------
+
+/// 80 caractères latins. Ancienne valeur : 40 — trop serrée pour un titre
+/// bilingue (« Plateforme de partage de revenus pour co-fondateurs » = 51).
+pub const MAX_TITLE_LEN: usize = 80;
+
+/// 500 OCTETS UTF-8. Ancienne valeur : 280.
+///
+/// Choix borné par la taille max d'une transaction (voir note ci-dessus), pas
+/// par le rent. 500 octets = 500 caractères ASCII, ~440 caractères de français
+/// accentué courant, ~125 emojis. Le compteur côté UI doit donc compter des
+/// OCTETS (`new TextEncoder().encode(s).length`) et non `s.length`, sinon il
+/// annonce une capacité qui n'existe pas et l'utilisateur se prend un
+/// InvalidParameter au moment de signer.
+///
+/// Une montée à 800 reste envisageable, mais seulement après un test de charge
+/// réel : create_project sur un pact à 8 membres, description pleine, pour
+/// vérifier qu'on ne dépasse pas les 1232 octets de la transaction.
+pub const MAX_DESC_LEN: usize = 500;
+
+/// 32 octets. Ancienne valeur : 24 — « Responsable Marketing Digital » (29)
+/// était refusé. Attention : multiplié par MAX_MEMBERS dans Project::LEN.
+pub const MAX_ROLE_LEN: usize = 32;
+
+// NE PAS augmenter MAX_PROJECT_ID_LEN : il sert de seed PDA, et une seed
+// Solana est plafonnée à 32 octets. Un dépassement plante à l'exécution,
+// pas à la compilation.
+//
+// NE PAS augmenter MAX_MEMBERS sans test de charge : chaque membre ajoute
+// un CPI transfer dans distribute (déjà 9 transferts à 8 membres), ce qui
+// rapproche des limites de calcul d'une transaction.
 pub const MAX_MEMBERS: usize = 8;
 
 // Trouvaille #2 audit Noah AI (24/08) : "Locked Funds Due to Inability to
@@ -36,6 +95,14 @@ pub mod workspace {
         description: String,
         creator_role: String,
         creator_share_bps: u16,
+        // Conservé pour compatibilité IDL avec le frontend déployé. La valeur
+        // est désormais imposée par la constante PROTOCOL_WALLET ci-dessus ;
+        // cet argument n'a plus d'effet fonctionnel. Le retirer changerait la
+        // signature de l'instruction, donc l'IDL, donc obligerait à
+        // resynchroniser frontend + Edge Functions dans la même seconde que le
+        // déploiement du programme — fenêtre pendant laquelle toute création de
+        // pact échouerait. Sera retiré lors d'un futur changement de signature
+        // groupé et assumé.
         protocol_wallet: Pubkey,
     ) -> Result<()> {
         require!(project_id.len() <= MAX_PROJECT_ID_LEN, ErrorCode::InvalidParameter);
@@ -66,6 +133,57 @@ pub mod workspace {
             project: project.key(),
             creator: creator_key,
             title: project.title.clone(),
+        });
+
+        Ok(())
+    }
+
+    // -----------------------------------------------------------------------
+    // Upgrade 27/08 — nouvelle instruction.
+    //
+    // Les pacts créés AVANT cet upgrade ont un `space` figé, calculé avec les
+    // anciennes bornes (description 280, titre 40, rôle 24). Sans cette
+    // instruction ils resteraient plafonnés à vie.
+    //
+    // Note : cette instruction est elle aussi soumise au plafond de 1232
+    // octets par transaction. Elle est légère (3 comptes, un seul argument),
+    // donc 500 octets de description passent sans difficulté — c'est
+    // create_project, avec ses arguments multiples, qui est le cas le plus
+    // serré.
+    //
+    // `update_description` a donc deux rôles :
+    //   1. permettre au créateur de corriger / étendre la description ;
+    //   2. servir de MIGRATION — la contrainte `realloc` porte toujours le
+    //      compte à la taille maximale actuelle (8 + Project::LEN), ce qui
+    //      débloque aussi les titres longs et les rôles de 32 octets sur les
+    //      anciens pacts.
+    //
+    // Le realloc cible systématiquement Project::LEN, jamais une taille
+    // calculée sur le contenu : un compte rétréci casserait la prochaine
+    // écriture longue. Le rent différentiel est à la charge du créateur, et
+    // lui est restitué à close_project.
+    //
+    // Restreint au statut Open : autoriser la modification après finalize
+    // reviendrait à altérer le texte que les autres membres ont approuvé.
+    // Aucun nouveau code d'erreur — voir la note sur ErrorCode en bas de
+    // fichier.
+    // -----------------------------------------------------------------------
+    pub fn update_description(
+        ctx: Context<UpdateDescription>,
+        description: String,
+    ) -> Result<()> {
+        require!(description.len() <= MAX_DESC_LEN, ErrorCode::InvalidParameter);
+
+        let project = &mut ctx.accounts.project;
+        require!(project.status == ProjectStatus::Open, ErrorCode::AlreadyFinalized);
+
+        let new_len = description.len() as u32;
+        project.description = description;
+
+        emit!(DescriptionUpdated {
+            project: project.key(),
+            creator: project.creator,
+            new_len,
         });
 
         Ok(())
@@ -240,6 +358,7 @@ pub mod workspace {
         let after_fee = available.checked_sub(fee).ok_or(ErrorCode::MathOverflow)?;
 
         let mut member_amounts: Vec<u64> = Vec::with_capacity(members.len());
+        let mut total_transferred: u64 = 0;
         for m in members.iter() {
             let amt: u64 = (after_fee as u128)
                 .checked_mul(m.share_bps as u128)
@@ -248,6 +367,9 @@ pub mod workspace {
                 .ok_or(ErrorCode::MathOverflow)?
                 .try_into()
                 .map_err(|_| ErrorCode::MathOverflow)?;
+            total_transferred = total_transferred
+                .checked_add(amt)
+                .ok_or(ErrorCode::MathOverflow)?;
             member_amounts.push(amt);
         }
 
@@ -288,37 +410,209 @@ pub mod workspace {
             }
         }
 
+        // Trouvaille #4 audit Noah AI (26/08) : "Inaccurate Event Emission in
+        // distribute" — l'événement reportait after_fee, alors que la division
+        // entière des parts laisse quelques lamports de poussière dans le vault.
+        // On loggue maintenant la somme exacte des montants réellement virés.
         emit!(FundsDistributed {
             project: project_key,
             fee_lamports: fee,
-            total_distributed_lamports: after_fee,
+            total_distributed_lamports: total_transferred,
+        });
+
+        Ok(())
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Financement multi-token (30/08) — GO explicite utilisateur sur
+    // MULTI_TOKEN_FUNDING_PLAN.md, Option B (plusieurs vaults simultanés
+    // par mint), séquencement USDC → USDT → BTC/ETH pontés. Un seul
+    // mécanisme générique `fund_spl`/`distribute_spl` couvre les trois :
+    // seul le `mint` passé en paramètre change, la logique programme est
+    // identique quel que soit le token SPL. `transfer_checked` partout
+    // (jamais `transfer` nu) — vérifie mint ET decimals à chaque virement,
+    // contrairement à `spl_token::transfer` qui accepterait silencieusement
+    // un mint incohérent si les comptes étaient mal formés côté client.
+    //
+    // Program ID / Config PDA non touchés. Aucun déploiement effectué par
+    // ce commit — reste une étape séparée nécessitant sa propre validation.
+    // ─────────────────────────────────────────────────────────────────
+
+    /// Financement SPL — même garde-fou que `fund` (uniquement après
+    /// finalisation, modèle Kickstarter), mais vers un vault dédié à CE
+    /// mint précis plutôt que le vault SOL natif. Le vault SPL est un
+    /// compte-jeton dont le PDA `token_vault` est lui-même l'autorité
+    /// (`token::authority = token_vault`) — créé au premier `fund_spl` sur
+    /// ce mint (`init_if_needed`), payé par le premier financeur.
+    pub fn fund_spl(ctx: Context<FundSpl>, amount: u64) -> Result<()> {
+        let project = &ctx.accounts.project;
+        require!(project.status == ProjectStatus::Finalized, ErrorCode::NotFinalized);
+        require!(amount > 0, ErrorCode::InvalidAmount);
+
+        token::transfer_checked(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                token::TransferChecked {
+                    from: ctx.accounts.funder_token_account.to_account_info(),
+                    mint: ctx.accounts.mint.to_account_info(),
+                    to: ctx.accounts.token_vault.to_account_info(),
+                    authority: ctx.accounts.funder.to_account_info(),
+                },
+            ),
+            amount,
+            ctx.accounts.mint.decimals,
+        )?;
+
+        emit!(ProjectFundedSpl {
+            project: ctx.accounts.project.key(),
+            mint: ctx.accounts.mint.key(),
+            amount,
+        });
+
+        Ok(())
+    }
+
+    /// Distribution SPL — même arithmétique bps que `distribute` (frais
+    /// protocole puis répartition des parts, tout en u128 checked), mais
+    /// appliquée au solde du vault SPL de CE mint. Contrairement au vault
+    /// SOL natif, un compte-jeton n'a pas de loyer superflu à soustraire :
+    /// tout `token_vault.amount` est distribuable. Chaque pact peut donc
+    /// avoir plusieurs de ces distributions indépendantes en parallèle (une
+    /// par mint funded), conformément à l'Option B retenue.
+    pub fn distribute_spl<'info>(
+        ctx: Context<'_, '_, '_, 'info, DistributeSpl<'info>>,
+    ) -> Result<()> {
+        let project = &ctx.accounts.project;
+        require!(project.status == ProjectStatus::Finalized, ErrorCode::NotFinalized);
+        let members = project.members.clone();
+        require!(
+            ctx.remaining_accounts.len() == members.len(),
+            ErrorCode::MemberMismatch
+        );
+        let project_key = ctx.accounts.project.key();
+        let mint_key = ctx.accounts.mint.key();
+        let decimals = ctx.accounts.mint.decimals;
+        let vault_bump = ctx.bumps.token_vault;
+
+        let available = ctx.accounts.token_vault.amount;
+        require!(available > 0, ErrorCode::DistributionEmpty);
+
+        let fee: u64 = (available as u128)
+            .checked_mul(PROTOCOL_FEE_BPS as u128)
+            .ok_or(ErrorCode::MathOverflow)?
+            .checked_div(TOTAL_BPS as u128)
+            .ok_or(ErrorCode::MathOverflow)?
+            .try_into()
+            .map_err(|_| ErrorCode::MathOverflow)?;
+
+        let after_fee = available.checked_sub(fee).ok_or(ErrorCode::MathOverflow)?;
+
+        let mut member_amounts: Vec<u64> = Vec::with_capacity(members.len());
+        let mut total_transferred: u64 = 0;
+        for m in members.iter() {
+            let amt: u64 = (after_fee as u128)
+                .checked_mul(m.share_bps as u128)
+                .ok_or(ErrorCode::MathOverflow)?
+                .checked_div(TOTAL_BPS as u128)
+                .ok_or(ErrorCode::MathOverflow)?
+                .try_into()
+                .map_err(|_| ErrorCode::MathOverflow)?;
+            total_transferred = total_transferred
+                .checked_add(amt)
+                .ok_or(ErrorCode::MathOverflow)?;
+            member_amounts.push(amt);
+        }
+
+        let bump_arr = [vault_bump];
+        let seeds: &[&[u8]] = &[
+            b"token_vault",
+            project_key.as_ref(),
+            mint_key.as_ref(),
+            &bump_arr,
+        ];
+        let signer_seeds: &[&[&[u8]]] = &[seeds];
+
+        if fee > 0 {
+            token::transfer_checked(
+                CpiContext::new_with_signer(
+                    ctx.accounts.token_program.to_account_info(),
+                    token::TransferChecked {
+                        from: ctx.accounts.token_vault.to_account_info(),
+                        mint: ctx.accounts.mint.to_account_info(),
+                        to: ctx.accounts.protocol_token_account.to_account_info(),
+                        authority: ctx.accounts.token_vault.to_account_info(),
+                    },
+                    signer_seeds,
+                ),
+                fee,
+                decimals,
+            )?;
+        }
+
+        for (i, member) in members.iter().enumerate() {
+            let target_info = &ctx.remaining_accounts[i];
+            // `remaining_accounts` n'est pas typé par Anchor : on désérialise
+            // nous-mêmes en TokenAccount pour vérifier mint ET propriétaire
+            // avant tout virement — même esprit que le contrôle
+            // `target.key() == member.wallet` de `distribute()`, mais sur le
+            // compte-jeton du membre plutôt que sur son wallet natif.
+            let target_token: Account<TokenAccount> =
+                Account::try_from(target_info).map_err(|_| ErrorCode::InvalidMint)?;
+            require!(target_token.mint == mint_key, ErrorCode::InvalidMint);
+            require!(target_token.owner == member.wallet, ErrorCode::MemberMismatch);
+
+            let amt = member_amounts[i];
+            if amt > 0 {
+                token::transfer_checked(
+                    CpiContext::new_with_signer(
+                        ctx.accounts.token_program.to_account_info(),
+                        token::TransferChecked {
+                            from: ctx.accounts.token_vault.to_account_info(),
+                            mint: ctx.accounts.mint.to_account_info(),
+                            to: target_info.clone(),
+                            authority: ctx.accounts.token_vault.to_account_info(),
+                        },
+                        signer_seeds,
+                    ),
+                    amt,
+                    decimals,
+                )?;
+            }
+        }
+
+        emit!(FundsDistributedSpl {
+            project: project_key,
+            mint: mint_key,
+            fee_amount: fee,
+            total_distributed: total_transferred,
         });
 
         Ok(())
     }
 
     pub fn close_project(ctx: Context<CloseProject>) -> Result<()> {
-        let project = &ctx.accounts.project;
         let vault_lamports = ctx.accounts.vault.lamports();
 
-        if project.status == ProjectStatus::Finalized {
-            // Trouvaille #2 audit Noah AI (24/08) : "Locked Funds Due to
-            // Inability to Close Finalized Projects" — avant ce fix, un pact
-            // finalisé ne pouvait JAMAIS être fermé, gelant loyer + poussière
-            // d'arrondi pour toujours. On autorise maintenant la fermeture
-            // d'un pact finalisé UNIQUEMENT si le vault ne contient plus que
-            // de la poussière (DUST_TOLERANCE_LAMPORTS, très en dessous de
-            // tout montant réel) — donc seulement après que distribute() a
-            // bien reversé les fonds aux membres. Un founder ne peut donc
-            // jamais fermer pour vider un vault qui contient encore de
-            // vraies sommes non distribuées : la require! ci-dessous bloque
-            // cet appel tant que ce n'est pas le cas.
-            let rent_min = Rent::get()?.minimum_balance(0);
-            let threshold = rent_min
-                .checked_add(DUST_TOLERANCE_LAMPORTS)
-                .ok_or(ErrorCode::MathOverflow)?;
-            require!(vault_lamports <= threshold, ErrorCode::VaultNotEmpty);
-        }
+        // Trouvaille #2 audit Noah AI (24/08) : "Locked Funds Due to
+        // Inability to Close Finalized Projects" — avant ce fix, un pact
+        // finalisé ne pouvait JAMAIS être fermé, gelant loyer + poussière
+        // d'arrondi pour toujours. On autorise maintenant la fermeture
+        // UNIQUEMENT si le vault ne contient plus que de la poussière
+        // (DUST_TOLERANCE_LAMPORTS, très en dessous de tout montant réel).
+        //
+        // Trouvaille #1 audit Noah AI (26/08) : "Unprotected Vault Closure for
+        // Open Projects" — ce contrôle était auparavant enfermé dans un
+        // `if status == Finalized`. Un transfert SOL natif direct vers le PDA
+        // vault d'un pact encore Open contournait donc entièrement la
+        // vérification, permettant au créateur de balayer ces fonds via
+        // close_project. Le seuil s'applique désormais à tous les états : un
+        // vault contenant autre chose que de la poussière bloque la fermeture,
+        // quel que soit le statut du pact.
+        let rent_min = Rent::get()?.minimum_balance(0);
+        let threshold = rent_min
+            .checked_add(DUST_TOLERANCE_LAMPORTS)
+            .ok_or(ErrorCode::MathOverflow)?;
+        require!(vault_lamports <= threshold, ErrorCode::VaultNotEmpty);
 
         if vault_lamports > 0 {
             let project_key = ctx.accounts.project.key();
@@ -407,6 +701,35 @@ pub struct CreateProject<'info> {
         bump,
         payer = creator,
         space = 8 + Project::LEN
+    )]
+    pub project: Account<'info, Project>,
+
+    #[account(mut)]
+    pub creator: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+/// Contexte de update_description.
+///
+/// `realloc` porte le compte à la taille maximale courante. Sur un pact créé
+/// avant l'upgrade du 27/08, cela agrandit le compte ; sur un pact récent
+/// c'est un no-op. `realloc::zero = false` : on ne remet pas à zéro l'espace
+/// ajouté, la resérialisation Borsh de sortie réécrit de toute façon toute la
+/// zone utile et les octets de queue ne sont jamais lus.
+///
+/// `creator` doit être `mut` : il paie le rent différentiel via
+/// `realloc::payer`.
+#[derive(Accounts)]
+pub struct UpdateDescription<'info> {
+    #[account(
+        mut,
+        seeds = [b"project", project.creator.as_ref(), project.project_id.as_bytes()],
+        bump = project.bump,
+        has_one = creator @ ErrorCode::Unauthorized,
+        realloc = 8 + Project::LEN,
+        realloc::payer = creator,
+        realloc::zero = false,
     )]
     pub project: Account<'info, Project>,
 
@@ -513,6 +836,79 @@ pub struct Distribute<'info> {
 }
 
 #[derive(Accounts)]
+pub struct FundSpl<'info> {
+    #[account(
+        seeds = [b"project", project.creator.as_ref(), project.project_id.as_bytes()],
+        bump = project.bump,
+    )]
+    pub project: Account<'info, Project>,
+
+    pub mint: Account<'info, Mint>,
+
+    // PDA-propriétaire du vault SPL de ce (project, mint) — pas d'ATA
+    // classique : le PDA `token_vault` EST directement le compte-jeton
+    // (`token::authority = token_vault`), pattern Anchor standard qui évite
+    // une couche de dérivation d'ATA supplémentaire. Créé au premier
+    // `fund_spl` sur ce mint (`init_if_needed`), payé par le financeur.
+    #[account(
+        init_if_needed,
+        payer = funder,
+        seeds = [b"token_vault", project.key().as_ref(), mint.key().as_ref()],
+        bump,
+        token::mint = mint,
+        token::authority = token_vault,
+    )]
+    pub token_vault: Account<'info, TokenAccount>,
+
+    #[account(
+        mut,
+        token::mint = mint,
+        token::authority = funder,
+    )]
+    pub funder_token_account: Account<'info, TokenAccount>,
+
+    #[account(mut)]
+    pub funder: Signer<'info>,
+
+    pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct DistributeSpl<'info> {
+    #[account(
+        seeds = [b"project", project.creator.as_ref(), project.project_id.as_bytes()],
+        bump = project.bump,
+    )]
+    pub project: Account<'info, Project>,
+
+    pub mint: Account<'info, Mint>,
+
+    #[account(
+        mut,
+        seeds = [b"token_vault", project.key().as_ref(), mint.key().as_ref()],
+        bump,
+        token::mint = mint,
+        token::authority = token_vault,
+    )]
+    pub token_vault: Account<'info, TokenAccount>,
+
+    // Compte-jeton du portefeuille protocole pour CE mint — doit déjà
+    // exister (créé côté protocole une fois par mint pris en charge) ;
+    // cette instruction ne le crée pas, contrairement à `token_vault`.
+    #[account(
+        mut,
+        token::mint = mint,
+        constraint = protocol_token_account.owner == project.protocol_wallet @ ErrorCode::InvalidProtocolWallet,
+    )]
+    pub protocol_token_account: Account<'info, TokenAccount>,
+
+    pub caller: Signer<'info>,
+
+    pub token_program: Program<'info, Token>,
+}
+
+#[derive(Accounts)]
 pub struct CloseProject<'info> {
     #[account(
         mut,
@@ -589,6 +985,49 @@ pub struct ProjectClosed {
     pub project: Pubkey,
 }
 
+/// Upgrade 27/08 — `new_len` est une longueur en OCTETS UTF-8, pas en
+/// caractères. Un indexeur qui voudrait afficher un compteur doit en tenir
+/// compte.
+#[event]
+pub struct DescriptionUpdated {
+    pub project: Pubkey,
+    pub creator: Pubkey,
+    pub new_len: u32,
+}
+
+// Financement multi-token (30/08) — voir MULTI_TOKEN_FUNDING_PLAN.md.
+#[event]
+pub struct ProjectFundedSpl {
+    pub project: Pubkey,
+    pub mint: Pubkey,
+    pub amount: u64,
+}
+
+#[event]
+pub struct FundsDistributedSpl {
+    pub project: Pubkey,
+    pub mint: Pubkey,
+    pub fee_amount: u64,
+    pub total_distributed: u64,
+}
+
+// ---------------------------------------------------------------------------
+// RÈGLE D'OR — ne jamais insérer de variante au milieu de cet enum.
+//
+// Anchor numérote séquentiellement à partir de 6000, dans l'ordre de
+// déclaration. Insérer une variante décale TOUS les codes suivants : le
+// frontend, les Edge Functions, les tests et la doc qui affichent « erreur
+// 6021 » se mettent à désigner autre chose, silencieusement. Toute nouvelle
+// variante s'ajoute EN FIN d'enum, à partir de 6023.
+//
+// InactiveAccount (6003) n'est référencé nulle part dans le programme. Il est
+// volontairement CONSERVÉ : le supprimer décalerait 19 codes. Code mort
+// inoffensif.
+//
+// L'upgrade du 27/08 (update_description) n'ajoute AUCUN code : il réutilise
+// InvalidParameter pour la longueur, Unauthorized via has_one, et
+// AlreadyFinalized pour le verrou de statut.
+// ---------------------------------------------------------------------------
 #[error_code]
 pub enum ErrorCode {
     #[msg("Math overflow occurred")]
@@ -637,4 +1076,8 @@ pub enum ErrorCode {
     InvalidProtocolWallet,
     #[msg("A finalized project can only be closed once its vault is fully distributed")]
     VaultNotEmpty,
+    // 30/08 — financement multi-token. Ajouté EN FIN d'enum (6023), voir la
+    // RÈGLE D'OR ci-dessus : jamais d'insertion au milieu.
+    #[msg("Token account mint does not match the expected mint for this vault")]
+    InvalidMint,
 }

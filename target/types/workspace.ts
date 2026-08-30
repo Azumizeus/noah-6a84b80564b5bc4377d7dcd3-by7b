@@ -501,59 +501,6 @@ export type Workspace = {
       ]
     },
     {
-      "name": "initializeConfig",
-      "discriminator": [
-        208,
-        127,
-        21,
-        1,
-        194,
-        190,
-        196,
-        70
-      ],
-      "accounts": [
-        {
-          "name": "config",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "authority"
-              }
-            ]
-          }
-        },
-        {
-          "name": "authority",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "systemProgram",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "protocolFeeBps",
-          "type": "u16"
-        }
-      ]
-    },
-    {
       "name": "removeMember",
       "discriminator": [
         171,
@@ -610,22 +557,72 @@ export type Workspace = {
           "type": "pubkey"
         }
       ]
+    },
+    {
+      "name": "updateDescription",
+      "discriminator": [
+        192,
+        56,
+        16,
+        166,
+        212,
+        219,
+        112,
+        142
+      ],
+      "accounts": [
+        {
+          "name": "project",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  106,
+                  101,
+                  99,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "project.creator",
+                "account": "project"
+              },
+              {
+                "kind": "account",
+                "path": "project.project_id",
+                "account": "project"
+              }
+            ]
+          }
+        },
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "project"
+          ]
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "description",
+          "type": "string"
+        }
+      ]
     }
   ],
   "accounts": [
-    {
-      "name": "config",
-      "discriminator": [
-        155,
-        12,
-        170,
-        224,
-        30,
-        250,
-        204,
-        130
-      ]
-    },
     {
       "name": "project",
       "discriminator": [
@@ -637,6 +634,125 @@ export type Workspace = {
         247,
         142,
         19
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "descriptionUpdated",
+      "discriminator": [
+        201,
+        86,
+        125,
+        32,
+        30,
+        42,
+        181,
+        95
+      ]
+    },
+    {
+      "name": "fundsDistributed",
+      "discriminator": [
+        246,
+        28,
+        47,
+        10,
+        202,
+        53,
+        3,
+        232
+      ]
+    },
+    {
+      "name": "memberAdded",
+      "discriminator": [
+        198,
+        220,
+        228,
+        196,
+        92,
+        235,
+        240,
+        79
+      ]
+    },
+    {
+      "name": "memberApproved",
+      "discriminator": [
+        174,
+        128,
+        113,
+        88,
+        4,
+        208,
+        86,
+        234
+      ]
+    },
+    {
+      "name": "memberRemoved",
+      "discriminator": [
+        250,
+        66,
+        3,
+        113,
+        161,
+        10,
+        59,
+        39
+      ]
+    },
+    {
+      "name": "projectClosed",
+      "discriminator": [
+        99,
+        119,
+        201,
+        52,
+        106,
+        26,
+        76,
+        87
+      ]
+    },
+    {
+      "name": "projectCreated",
+      "discriminator": [
+        192,
+        10,
+        163,
+        29,
+        185,
+        31,
+        67,
+        168
+      ]
+    },
+    {
+      "name": "projectFinalized",
+      "discriminator": [
+        206,
+        140,
+        138,
+        3,
+        23,
+        210,
+        23,
+        204
+      ]
+    },
+    {
+      "name": "projectFunded",
+      "discriminator": [
+        125,
+        81,
+        242,
+        91,
+        14,
+        66,
+        74,
+        95
       ]
     }
   ],
@@ -750,37 +866,55 @@ export type Workspace = {
       "code": 6021,
       "name": "invalidProtocolWallet",
       "msg": "protocol_wallet must match the locked BuildPact protocol wallet"
+    },
+    {
+      "code": 6022,
+      "name": "vaultNotEmpty",
+      "msg": "A finalized project can only be closed once its vault is fully distributed"
     }
   ],
   "types": [
     {
-      "name": "config",
+      "name": "descriptionUpdated",
+      "docs": [
+        "Upgrade 27/08 — `new_len` est une longueur en OCTETS UTF-8, pas en",
+        "caractères. Un indexeur qui voudrait afficher un compteur doit en tenir",
+        "compte."
+      ],
       "type": {
         "kind": "struct",
         "fields": [
           {
-            "name": "bump",
-            "type": "u8"
-          },
-          {
-            "name": "authority",
+            "name": "project",
             "type": "pubkey"
           },
           {
-            "name": "isActive",
-            "type": "bool"
+            "name": "creator",
+            "type": "pubkey"
           },
           {
-            "name": "isPaused",
-            "type": "bool"
+            "name": "newLen",
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "fundsDistributed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "project",
+            "type": "pubkey"
           },
           {
-            "name": "protocolFeeBps",
-            "type": "u16"
+            "name": "feeLamports",
+            "type": "u64"
           },
           {
-            "name": "version",
-            "type": "u8"
+            "name": "totalDistributedLamports",
+            "type": "u64"
           }
         ]
       }
@@ -805,6 +939,58 @@ export type Workspace = {
           {
             "name": "approved",
             "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "memberAdded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "project",
+            "type": "pubkey"
+          },
+          {
+            "name": "wallet",
+            "type": "pubkey"
+          },
+          {
+            "name": "shareBps",
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "memberApproved",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "project",
+            "type": "pubkey"
+          },
+          {
+            "name": "wallet",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "memberRemoved",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "project",
+            "type": "pubkey"
+          },
+          {
+            "name": "wallet",
+            "type": "pubkey"
           }
         ]
       }
@@ -855,6 +1041,66 @@ export type Workspace = {
           {
             "name": "bump",
             "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "projectClosed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "project",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "projectCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "project",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "title",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "projectFinalized",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "project",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "projectFunded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "project",
+            "type": "pubkey"
+          },
+          {
+            "name": "amountLamports",
+            "type": "u64"
           }
         ]
       }
