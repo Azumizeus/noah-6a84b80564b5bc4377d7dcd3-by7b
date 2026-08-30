@@ -1,13 +1,16 @@
-import { Buffer } from 'buffer';
-(window as any).Buffer = Buffer;
-(window as any).global = window;
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import App from './App';
-import './index.css';   // ← LA LIGNE CRITIQUE
+// MUST be the first import to ensure Buffer is available globally
+import './polyfills';
+import './index.css';
+import { createRoot } from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom';
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
+import App from './App.tsx';
+
+const rootElement = document.getElementById('root');
+if (!rootElement) throw new Error('Failed to find the root element');
+
+createRoot(rootElement).render(
+    <BrowserRouter>
+        <App />
+    </BrowserRouter>,
 );

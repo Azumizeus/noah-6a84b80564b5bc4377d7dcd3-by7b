@@ -1,37 +1,38 @@
 // src/components/CreatePactWizard.tsx
+//
+// Wizard de création de pact — 3 étapes.
+// Les vues des étapes 1 et 3 vivent dans ./wizard/ (PactStep1, PactStep3) :
+// le fichier monolithique dépassait 1400 lignes et n'était plus éditable
+// d'un bloc par la plupart des outils. Toute la LOGIQUE reste ici, les
+// sous-composants ne font qu'afficher.
+
 import { useState, useEffect } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { PublicKey } from '@solana/web3.js';
 import { createProject, addMember } from '../lib/anchor';
 import { useAnchorProgram } from '../hooks/useProjects';
-import { parseTxError, explorerTxUrl } from '../lib/pacts';
-import { ROLE_GROUPS, ALL_ROLES, roleShortLabel, combineRoleLabels } from '../lib/roles';
+import { parseTxError } from '../lib/pacts';
+import { ALL_ROLES, roleShortLabel, combineRoleLabels } from '../lib/roles';
 import { STAGE_CANONICAL, type PactStage } from '../lib/pitch';
 import { truncateUtf8, utf8ByteLength } from '../lib/textSafety';
 import { pactPublicUrl } from '../lib/router';
-import QrCode from './QrCode';
-import MediaPicker from './MediaPicker';
-import { uploadProjectMedia, mediaEnabled } from '../lib/media';
+import { uploadMediaFile, saveProjectMedia, signMediaWrite, type ProjectMediaPatch } from '../lib/media';
 import { saveOpenRoles, MAX_OPEN_ROLES } from '../lib/openRoles';
 import { useLanguage } from '../lib/i18n/LanguageContext';
+import { MAX_TITLE_LEN, MAX_DESC_LEN, MAX_ROLE_LEN } from '../lib/onchainLimits';
 
-// ═══ Lien Explorer après chaque transaction — important pour la démo devant les juges ═══
-function TxLink({ sig, label }: { sig: string; label: string }) {
-  return (
-    <a
-      href={explorerTxUrl(sig)}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="mt-1 block text-[11px] text-accent-neon underline underline-offset-2 hover:opacity-80"
-    >
-      {label} : {sig.slice(0, 8)}… ↗
-    </a>
-  );
-}
-
-// ═══ Wallet plateforme BuildPact — FIXE, non modifiable ═══
-// Pour le changer : modifie cette constante + commit + redeploy.
-const PLATFORM_WALLET = 'AVhVM29hD6YRLb2DujhKfF8Ger4bgaCpx9P93Q3XBWSH';
+import TxLink from './wizard/TxLink';
+import PactStep1 from './wizard/PactStep1';
+import PactStep3 from './wizard/PactStep3';
+import {
+  PLATFORM_WALLET,
+  hintCls,
+  loadDraft,
+  draftKey,
+  slugId,
+  type MemberDraft,
+  type PactDraft,
+} from './wizard/wizardShared';
 
 interface Props {
   onSuccess: () => void;
@@ -70,9 +71,7 @@ function Stepper({ step, labels }: { step: number; labels: string[] }) {
             </div>
             {n < labels.length && (
               <div
-                className={
-                  'h-px flex-1 ' + (state === 'done' ? 'bg-accent-neon/50' : 'bg-white/10')
-                }
+                className={'h-px flex-1 ' + (state === 'done' ? 'bg-accent-neon/50' : 'bg-white/10')}
               />
             )}
           </div>
@@ -82,60 +81,6 @@ function Stepper({ step, labels }: { step: number; labels: string[] }) {
   );
 }
 
-interface MemberDraft {
-  wallet: string;
-  roleIds: string[];   // multi-sélection — ids de ALL_ROLES (ex: dev ET designer à la fois)
-  customRole: string;  // rôle libre additionnel, combiné avec roleIds
-  role: string;        // label final combiné envoyé on-chain (≤ 24 octets, dérivé via combineRoleLabels)
-  share: number;
-  shareTouched: boolean; // true dès que l'utilisateur édite le % à la main
-}
-
-// ═══ Brouillon localStorage — survit à la fermeture de page ═══
-interface PactDraft {
-  step: number;
-  title: string;
-  description: string;
-  selectedRoles: string[];
-  customRoles: string[];
-  wantedRoles: string[]; // rôles recherchés (labels) — ajouté le 25/08, d'où le ?? [] à la restauration
-  myShare: number;
-  shareTouched: boolean;
-  stage: string;
-  seedAmount: string;
-  members: MemberDraft[];
-  projectId: string;
-  projectPda: string;
-  savedAt: number;
-}
-
-const draftKey = (wallet: string) => `buildpact_pact_draft_${wallet}`;
-
-function loadDraft(wallet: string): PactDraft | null {
-  try {
-    const raw = localStorage.getItem(draftKey(wallet));
-    if (!raw) return null;
-    const d = JSON.parse(raw) as PactDraft;
-    if (!d || typeof d !== 'object' || !d.title) return null;
-    // Expire après 7 jours
-    if (Date.now() - d.savedAt > 7 * 24 * 3600 * 1000) return null;
-    return d;
-  } catch {
-    return null;
-  }
-}
-
-const STAGE_IDS = ['dev', 'invest', 'both'] as const;
-
-// Rôles Web3 / Web2, groupés par catégorie — source unique : ../lib/roles
-// (partagée avec AddMemberModal, pour ne jamais désynchroniser les deux formulaires)
-
-const inputCls =
-  'w-full rounded-xl border border-white/10 bg-canvas-800/80 p-3 text-sm text-white ' +
-  'transition-colors placeholder:text-ink-400 focus:border-accent-violet/60 focus:outline-none focus:ring-2 focus:ring-accent-violet/20';
-const labelCls = 'block text-sm font-semibold text-white';
-const hintCls = 'mt-1.5 block text-[11px] leading-snug text-ink-400';
-
 // Calcule la part créateur suggérée selon les rôles cumulés + type de recherche
 function suggestShare(roleIds: string[], customCount: number, stage: string): number {
   const baseWeight = roleIds
@@ -143,7 +88,7 @@ function suggestShare(roleIds: string[], customCount: number, stage: string): nu
     .reduce((a, b) => a + b, 0);
   const totalWeight = baseWeight + customCount * 5;
 
-  let suggested = Math.round(totalWeight * 0.8);
+  const suggested = Math.round(totalWeight * 0.8);
   const cap = stage === 'invest' ? 55 : 40;
   return Math.min(Math.max(suggested, 10), cap);
 }
@@ -159,19 +104,6 @@ function suggestMemberShare(roleIds: string[]): number {
   return Math.min(Math.max(total, 5), 35);
 }
 
-// project_id safe : ≤ 20 bytes, minuscules, sans accents
-function slugId(name: string): string {
-  const slug = name
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 12) || 'pact';
-  return `${slug}-${Date.now().toString(36).slice(-6)}`; // ex: "seeker-mobile-abc123"
-}
-
 export function CreatePactWizard({ onSuccess, onClose }: Props) {
   const { t } = useLanguage();
   const STAGES = [
@@ -179,7 +111,12 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
     { id: 'invest', label: t('createWizard.stageInvest') },
     { id: 'both', label: t('createWizard.stageBoth') },
   ] as const;
-  const STEP_LABELS = [t('createWizard.stepProject'), t('createWizard.stepMembers'), t('createWizard.stepFinalize')];
+  const STEP_LABELS = [
+    t('createWizard.stepProject'),
+    t('createWizard.stepMembers'),
+    t('createWizard.stepFinalize'),
+  ];
+
   const { publicKey, signMessage } = useWallet();
   const program = useAnchorProgram();
   const [step, setStep] = useState(1);
@@ -188,7 +125,10 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
   // Ajout de membres = 1 transaction (donc 1 signature wallet) PAR membre — pas
   // de batch on-chain. On affiche une progression claire pendant la boucle pour
   // que l'utilisateur sache combien de fois Phantom va lui redemander de signer.
-  const [addMemberProgress, setAddMemberProgress] = useState<{ done: number; total: number } | null>(null);
+  const [addMemberProgress, setAddMemberProgress] = useState<{
+    done: number;
+    total: number;
+  } | null>(null);
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -232,21 +172,50 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
     // Ne sauvegarde que si quelque chose a été saisi
     if (!title && step === 1) return;
     const draft: PactDraft = {
-      step, title, description, selectedRoles, customRoles, wantedRoles,
-      myShare, shareTouched, stage, seedAmount, members,
+      step,
+      title,
+      description,
+      selectedRoles,
+      customRoles,
+      wantedRoles,
+      myShare,
+      shareTouched,
+      stage,
+      seedAmount,
+      members,
       projectId,
       projectPda: projectPda ? projectPda.toBase58() : '',
       savedAt: Date.now(),
     };
     try {
       localStorage.setItem(draftKey(publicKey.toBase58()), JSON.stringify(draft));
-    } catch { /* quota plein : non bloquant */ }
-  }, [publicKey, step, title, description, selectedRoles, customRoles, wantedRoles,
-      myShare, shareTouched, stage, seedAmount, members, projectId, projectPda]);
+    } catch {
+      /* quota plein : non bloquant */
+    }
+  }, [
+    publicKey,
+    step,
+    title,
+    description,
+    selectedRoles,
+    customRoles,
+    wantedRoles,
+    myShare,
+    shareTouched,
+    stage,
+    seedAmount,
+    members,
+    projectId,
+    projectPda,
+  ]);
 
   const clearDraft = () => {
     if (!publicKey) return;
-    try { localStorage.removeItem(draftKey(publicKey.toBase58())); } catch {}
+    try {
+      localStorage.removeItem(draftKey(publicKey.toBase58()));
+    } catch {
+      /* non bloquant */
+    }
     setPendingDraft(null);
   };
 
@@ -269,14 +238,18 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
         const roleIds = Array.isArray(legacy.roleIds)
           ? legacy.roleIds
           : legacy.roleId && legacy.roleId !== 'custom'
-          ? [legacy.roleId]
-          : [];
+            ? [legacy.roleId]
+            : [];
         return { ...m, roleIds };
       })
     );
     setProjectId(pendingDraft.projectId);
     if (pendingDraft.projectPda) {
-      try { setProjectPda(new PublicKey(pendingDraft.projectPda)); } catch {}
+      try {
+        setProjectPda(new PublicKey(pendingDraft.projectPda));
+      } catch {
+        /* PDA corrompu dans le brouillon : on l'ignore */
+      }
     }
     setPendingDraft(null);
   };
@@ -293,6 +266,7 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
   // approuver depuis leur propre wallet sans passer par le wizard du créateur.
   const shareUrl = projectPda ? pactPublicUrl(projectPda.toBase58()) : '';
   const canNativeShare = typeof navigator !== 'undefined' && !!navigator.share;
+
   const handleCopyShareLink = async () => {
     if (!shareUrl) return;
     try {
@@ -303,6 +277,7 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
       /* non bloquant — l'utilisateur peut toujours sélectionner le texte à la main */
     }
   };
+
   const handleNativeShare = async () => {
     if (!shareUrl) return;
     try {
@@ -325,24 +300,37 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
 
   // ⚠️ Bug trouvé lors de l'audit du 24/08 : la description on-chain packée
   // ([stage] pitch | Rôles créateur : ... | 💰 Seed founder : ...) est
-  // tronquée SILENCIEUSEMENT à 280 octets par truncateUtf8() dans
-  // handleCreate() — si le total dépasse, la fin (souvent la liste de rôles
-  // ou le seed) est coupée AU MILIEU D'UN MOT (ex: "UX/UI" → "UX/U"), et
-  // comme le programme n'a AUCUNE instruction update_description, c'est
-  // gravé on-chain de façon définitive. On avertit ici AVANT la création
-  // pour que le fondateur raccourcisse pitch/rôles/seed lui-même.
+  // tronquée SILENCIEUSEMENT par truncateUtf8() dans handleCreate() — si le
+  // total dépasse, la fin est coupée AU MILIEU D'UN MOT ("UX/UI" → "UX/U").
+  //
+  // ÉTAT AU 28/08 : le binaire devnet a été vérifié on-chain (idl-check.mjs
+  // — update_description présente, descriptions ≥ 400 octets acceptées), et
+  // PROGRAM_UPGRADED = true est donc confirmé, pas simplement déclaré. La
+  // troncature n'est plus définitive : EditDescriptionModal permet au
+  // founder de réécrire la description après coup, y compris sur un vieux
+  // pact (update_description réalloue le compte au passage).
+  //
+  // Cet avertissement pré-création reste utile pour autant : mieux vaut ne
+  // pas tronquer que réparer ensuite, et l'utilisateur doit voir qu'il
+  // dépasse AVANT de signer.
+  //
+  // La borne vient de onchainLimits.ts, plus de littéral ici : c'est ce qui
+  // garantit que ce garde-fou suivra tout seul le prochain upgrade.
   const previewStageLabel = stage ? STAGE_CANONICAL[stage as Exclude<PactStage, null>] : '';
   const previewSeedInfo =
     seedAmount && Number(seedAmount) > 0
       ? ` | 💰 Seed founder : ${seedAmount} SOL (engagement annoncé)`
       : '';
   const previewFullDescription =
-    '[' + previewStageLabel + '] ' +
+    '[' +
+    previewStageLabel +
+    '] ' +
     description +
-    ' | Rôles créateur : ' + myRoleLabel +
+    ' | Rôles créateur : ' +
+    myRoleLabel +
     previewSeedInfo;
   const descBytesUsed = utf8ByteLength(previewFullDescription);
-  const descWillTruncate = descBytesUsed > 280;
+  const descWillTruncate = descBytesUsed > MAX_DESC_LEN;
 
   const toggleRole = (id: string) => {
     const next = selectedRoles.includes(id)
@@ -382,7 +370,11 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
 
   const addWantedCustomRole = () => {
     const v = wantedCustomRole.trim();
-    if (v && !wantedRoles.some((r) => r.toLowerCase() === v.toLowerCase()) && wantedRoles.length < MAX_OPEN_ROLES) {
+    if (
+      v &&
+      !wantedRoles.some((r) => r.toLowerCase() === v.toLowerCase()) &&
+      wantedRoles.length < MAX_OPEN_ROLES
+    ) {
       setWantedRoles((prev) => [...prev, v]);
     }
     setWantedCustomRole('');
@@ -409,17 +401,15 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
           ? ` | 💰 Seed founder : ${seedAmount} SOL (engagement annoncé)`
           : '';
       const fullDescription = truncateUtf8(
-        '[' + stageLabel + '] ' +
-        description +
-        ' | Rôles créateur : ' + myRoleLabel + // ✅ la liste COMPLÈTE part ici (280 octets max)
-        seedInfo,
-        280 // MAX_DESC_LEN côté programme — voir textSafety.ts pour le pourquoi du bug 6005
+        '[' + stageLabel + '] ' + description + ' | Rôles créateur : ' + myRoleLabel + seedInfo,
+        MAX_DESC_LEN // borne du programme DÉPLOYÉ — voir onchainLimits.ts (bug 6005)
       );
 
-      // ✅ UN SEUL rôle, court, ≤ 24 bytes pour le programme
-      const creatorRoleOnChain = selectedRoles.length > 0
-        ? roleShortLabel(selectedRoles[0])
-        : truncateUtf8(customRoles[0] ?? 'Founder', 24); // MAX_ROLE_LEN côté programme
+      // ✅ UN SEUL rôle, court, borné à MAX_ROLE_LEN octets pour le programme
+      const creatorRoleOnChain =
+        selectedRoles.length > 0
+          ? roleShortLabel(selectedRoles[0])
+          : truncateUtf8(customRoles[0] ?? 'Founder', MAX_ROLE_LEN);
 
       const creatorShareBps = effectiveShare * 100;
 
@@ -427,7 +417,7 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
         program,
         publicKey,
         id,
-        truncateUtf8(title, 40),      // MAX_TITLE_LEN côté programme (octets UTF-8, pas caractères JS)
+        truncateUtf8(title, MAX_TITLE_LEN), // octets UTF-8, pas caractères JS
         fullDescription,
         creatorRoleOnChain,
         creatorShareBps,
@@ -439,22 +429,55 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
       setCreateSig(tx);
 
       // Upload logo/bannière APRÈS la création : on a besoin du vrai PDA
-      // on-chain comme clé (project_media.project_pda). Non bloquant — si
-      // l'upload échoue, le projet existe déjà on-chain, on prévient juste
-      // que l'image n'est pas passée (l'utilisateur pourra réessayer plus
-      // tard via "Modifier les médias" sur la carte du pact).
+      // on-chain comme clé (project_media.project_pda). Non bloquant.
+      //
+      // Depuis le verrouillage du bucket storage (migration 20260828190000),
+      // l'upload lui-même exige une signature — voir lib/media.ts. On signe
+      // UNE fois ici et on réutilise cette même signature pour les deux
+      // fichiers puis pour saveProjectMedia : un seul popup wallet pour tout
+      // le flux, juste après celui de la création.
+      //
+      // `id` (le project_id texte, pas le PDA) est passé à uploadMediaFile
+      // parce que le compte vient tout juste d'être créé : le RPC peut ne
+      // pas encore le voir, donc project-write ne peut pas lire
+      // project.creator on-chain pour vérifier l'autorisation. Il redérive
+      // le PDA depuis (wallet, id) à la place — voir project-write/index.ts.
       const mediaFailures: string[] = [];
-      if (logoFile) {
-        const r = await uploadProjectMedia(pda.toBase58(), logoFile, 'logo');
-        if ('error' in r) mediaFailures.push(`Logo : ${r.error}`);
-      }
-      if (bannerFile) {
-        const r = await uploadProjectMedia(pda.toBase58(), bannerFile, 'banner');
-        if ('error' in r) mediaFailures.push(`Bannière : ${r.error}`);
+      const mediaPatch: ProjectMediaPatch = {};
+      if (logoFile || bannerFile) {
+        if (!signMessage) {
+          mediaFailures.push('Wallet incapable de signer un message');
+        } else {
+          const signed = await signMediaWrite(publicKey.toBase58(), pda.toBase58(), signMessage);
+          if ('error' in signed) {
+            mediaFailures.push(signed.error);
+          } else {
+            if (logoFile) {
+              const r = await uploadMediaFile(pda.toBase58(), logoFile, 'logo', signed, id);
+              if ('error' in r) mediaFailures.push(`Logo : ${r.error}`);
+              else mediaPatch.logoUrl = r.url;
+            }
+            if (bannerFile) {
+              const r = await uploadMediaFile(pda.toBase58(), bannerFile, 'banner', signed, id);
+              if ('error' in r) mediaFailures.push(`Bannière : ${r.error}`);
+              else mediaPatch.bannerUrl = r.url;
+            }
+            if (Object.keys(mediaPatch).length > 0) {
+              const saved = await saveProjectMedia(
+                pda.toBase58(),
+                mediaPatch,
+                { wallet: publicKey.toBase58(), signMessage },
+                signed
+              );
+              if ('error' in saved) mediaFailures.push(saved.error);
+            }
+          }
+        }
       }
       if (mediaFailures.length > 0) {
         setMediaWarning(
-          mediaFailures.join(' — ') + ' (le projet est bien créé — réessaie depuis "Modifier les médias" sur sa carte)'
+          mediaFailures.join(' — ') +
+            ' (le projet est bien créé — réessaie depuis "Modifier les médias" sur sa carte)'
         );
       }
 
@@ -465,15 +488,20 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
       // existe déjà ; le founder pourra définir ses rôles depuis la fiche pact.
       if (wantedRoles.length > 0) {
         if (signMessage) {
-          const r = await saveOpenRoles(publicKey.toBase58(), signMessage, pda.toBase58(), wantedRoles);
+          const r = await saveOpenRoles(
+            publicKey.toBase58(),
+            signMessage,
+            pda.toBase58(),
+            wantedRoles
+          );
           if ('error' in r) {
-            setMediaWarning((prev) =>
-              (prev ? prev + ' · ' : '') + t('createWizard.wantedRolesSaveFailed')
+            setMediaWarning(
+              (prev) => (prev ? prev + ' · ' : '') + t('createWizard.wantedRolesSaveFailed')
             );
           }
         } else {
-          setMediaWarning((prev) =>
-            (prev ? prev + ' · ' : '') + t('createWizard.wantedRolesSaveFailed')
+          setMediaWarning(
+            (prev) => (prev ? prev + ' · ' : '') + t('createWizard.wantedRolesSaveFailed')
           );
         }
       }
@@ -488,31 +516,87 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
 
   const handleAddMember = async () => {
     if (!projectPda) return;
-    setLoading(true);
     setError(null);
     const validMembers = members.filter((m) => m.wallet.trim() !== '');
+
+    // ═══ CORRECTIF 1/2 — validation AVANT la première signature ═══
+    // `new PublicKey(...)` lève sur une adresse mal collée. Sans cette passe,
+    // l'exception tombait AU MILIEU de la boucle : les membres déjà traités
+    // étaient écrits on-chain, les suivants non. On refuse de démarrer tant
+    // qu'une seule adresse est invalide — c'est de loin la cause d'échec la
+    // plus fréquente, et la seule éliminable à coût nul.
+    const badWallet = validMembers.find((m) => {
+      try {
+        new PublicKey(m.wallet.trim());
+        return false;
+      } catch {
+        return true;
+      }
+    });
+    if (badWallet) {
+      setError(`Adresse wallet invalide : ${badWallet.wallet}`);
+      return;
+    }
+
+    // Doublon dans le formulaire lui-même : le programme renverrait
+    // DuplicateMember (6007) à la 2ᵉ occurrence, après avoir déjà fait signer
+    // la 1ʳᵉ. Autant l'attraper ici, sans transaction.
+    const seen = new Set<string>();
+    const dup = validMembers.find((m) => {
+      const w = m.wallet.trim();
+      if (seen.has(w)) return true;
+      seen.add(w);
+      return false;
+    });
+    if (dup) {
+      setError(`Ce wallet apparaît deux fois : ${dup.wallet}`);
+      return;
+    }
+
+    setLoading(true);
     setAddMemberProgress({ done: 0, total: validMembers.length });
+
+    // ═══ CORRECTIF 2/2 — reprise après échec partiel ═══
+    // Chaque membre = 1 transaction indépendante. Si la 3ᵉ échoue (refus de
+    // signature, RPC qui lâche), les 2 premières sont DÉJÀ on-chain et
+    // définitives. On retire donc de `members` tout ce qui a réussi, pour
+    // qu'un reclic ne renvoie que le reste. Sans ça, le reclic repartait de
+    // zéro et se prenait DuplicateMember (6007) sur le premier membre —
+    // pact bloqué, impossible d'ajouter les manquants depuis le wizard.
+    const written: { wallet: string; sig: string }[] = [];
     try {
-      const sigs: { wallet: string; sig: string }[] = [];
       let done = 0;
       for (const m of validMembers) {
         const sig = await addMember(
           program,
           publicKey,
           projectPda,
-          new PublicKey(m.wallet),
-          truncateUtf8(m.role, 24),   // MAX_ROLE_LEN — même bug 6005 si emoji/accents non tronqués en octets
+          new PublicKey(m.wallet.trim()),
+          truncateUtf8(m.role, MAX_ROLE_LEN), // même bug 6005 si emoji/accents non tronqués en octets
           m.share * 100
         );
-        sigs.push({ wallet: m.wallet, sig });
+        written.push({ wallet: m.wallet, sig });
         done += 1;
         setAddMemberProgress({ done, total: validMembers.length });
       }
-      setMemberSigs(sigs);
+      setMemberSigs((prev) => [...prev, ...written]);
       setStep(3);
     } catch (e) {
-      setError(parseTxError(e));
+      // On conserve les signatures déjà obtenues : elles restent affichables
+      // et vérifiables sur l'Explorer même si la série n'est pas allée au bout.
+      setMemberSigs((prev) => [...prev, ...written]);
+      setError(
+        parseTxError(e) +
+          (written.length > 0
+            ? ` — ${written.length} membre(s) déjà enregistré(s) on-chain : ils ont été retirés de la liste, reclique pour ajouter les restants.`
+            : '')
+      );
     } finally {
+      // Purge des membres confirmés on-chain, succès comme échec.
+      if (written.length > 0) {
+        const writtenSet = new Set(written.map((w) => w.wallet));
+        setMembers((prev) => prev.filter((m) => !writtenSet.has(m.wallet)));
+      }
       setLoading(false);
       setAddMemberProgress(null);
     }
@@ -610,9 +694,7 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
             {t('createWizard.draftFound', { title: pendingDraft.title })}
             {pendingDraft.projectPda && t('createWizard.draftOnChainNote')}
           </p>
-          <p className="mt-1 text-[11px] text-amber-200/70">
-            {t('createWizard.draftHint')}
-          </p>
+          <p className="mt-1 text-[11px] text-amber-200/70">{t('createWizard.draftHint')}</p>
           <div className="mt-2 flex gap-2">
             <button
               type="button"
@@ -634,343 +716,57 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
 
       {/* ═══════════ ÉTAPE 1 — IDENTITÉ ═══════════ */}
       {step === 1 && (
-        <div className="space-y-5">
-        <div className="grid grid-cols-1 gap-x-8 gap-y-5 lg:grid-cols-2">
-        <div className="space-y-5">
-
-          {/* NOM */}
-          <div>
-            <label htmlFor="pact-title" className={labelCls}>{t('createWizard.projectName')}</label>
-            <input
-              id="pact-title"
-              className={inputCls}
-              placeholder={t('createWizard.projectNamePlaceholder')}
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-            />
-            <small className={hintCls}>
-              {t('createWizard.projectNameHint')}
-            </small>
-          </div>
-
-          {/* LOGO & BANNIÈRE — optionnel, améliore la visibilité pour attirer
-              dons/investisseurs. Upload réel après création (voir handleCreate),
-              stockage Supabase off-chain, aucune donnée mock si non renseigné. */}
-          {mediaEnabled && (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-[auto_1fr]">
-              <MediaPicker
-                kind="logo"
-                label={t('createWizard.logoLabel')}
-                hint={t('createWizard.logoHint')}
-                onChange={setLogoFile}
-              />
-              <MediaPicker
-                kind="banner"
-                label={t('createWizard.bannerLabel')}
-                hint={t('createWizard.bannerHint')}
-                onChange={setBannerFile}
-              />
-            </div>
-          )}
-
-          {/* DESCRIPTION */}
-          <div>
-            <label htmlFor="pact-description" className={labelCls}>{t('createWizard.descriptionLabel')}</label>
-            <textarea
-              id="pact-description"
-              className={inputCls}
-              rows={3}
-              placeholder={t('createWizard.descriptionPlaceholder')}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-            <small className={hintCls}>
-              {t('createWizard.descriptionHint')}
-            </small>
-          </div>
-
-          {/* TYPE DE RECHERCHE */}
-          <div>
-            <span id="pact-stage-label" className={labelCls}>{t('createWizard.stageLabel')}</span>
-            <small className={hintCls}>
-              {t('createWizard.stageHint')}
-            </small>
-            <div role="group" aria-labelledby="pact-stage-label" className="mt-1 flex gap-2">
-              {STAGES.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => handleStage(s.id)}
-                  className={
-                    'flex-1 rounded-lg border px-2 py-2 text-xs transition-colors ' +
-                    (stage === s.id
-                      ? 'border-accent-violet/50 bg-violet-500/15 text-white'
-                      : 'border-white/10 text-ink-300 hover:text-white')
-                  }
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* SEED FOUNDER (informatif) */}
-          <div>
-            <label htmlFor="pact-seed-amount" className={labelCls}>{t('createWizard.seedLabel')}</label>
-            <div className="flex items-center gap-2">
-              <input
-                id="pact-seed-amount"
-                type="number"
-                min={0}
-                step="0.01"
-                className={inputCls}
-                placeholder="0"
-                value={seedAmount}
-                onChange={(e) => setSeedAmount(e.target.value)}
-              />
-              <span className="whitespace-nowrap text-xs text-ink-400">SOL</span>
-            </div>
-            <small className={hintCls}>
-              {t('createWizard.seedHint')}
-            </small>
-          </div>
-
-        </div>
-        <div className="space-y-5">
-
-          {/* TES RÔLES (multi-sélection, groupés) */}
-          <div>
-            <span id="pact-roles-label" className={labelCls}>{t('createWizard.rolesLabel')}</span>
-            <small className={hintCls}>
-              {t('createWizard.rolesHint')}
-            </small>
-
-            {ROLE_GROUPS.map((group) => (
-              <div key={group.category} className="mt-2">
-                <p className="mb-1 text-[10px] uppercase tracking-wider text-ink-400">
-                  {group.category}
-                </p>
-                <div role="group" aria-labelledby="pact-roles-label" className="flex flex-wrap gap-2">
-                  {group.roles.map((r) => (
-                    <button
-                      key={r.id}
-                      type="button"
-                      onClick={() => toggleRole(r.id)}
-                      className={
-                        'rounded-full border px-3 py-1 text-xs transition-colors ' +
-                        (selectedRoles.includes(r.id)
-                          ? 'border-accent-violet/60 bg-violet-500/20 text-white'
-                          : 'border-white/10 text-ink-300 hover:text-white')
-                      }
-                    >
-                      {r.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
-
-            {/* Rôle custom */}
-            <div className="mt-3 flex gap-2">
-              <input
-                className={inputCls}
-                placeholder={t('createWizard.customRolePlaceholder')}
-                value={customRole}
-                onChange={(e) => setCustomRole(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomRole(); } }}
-              />
-              <button
-                type="button"
-                onClick={addCustomRole}
-                className="whitespace-nowrap rounded border border-accent-violet/40 bg-violet-500/10 px-3 text-xs text-accent-violet hover:bg-violet-500/20"
-              >
-                {t('createWizard.addRole')}
-              </button>
-            </div>
-            {customRoles.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {customRoles.map((r) => (
-                  <button
-                    key={r}
-                    type="button"
-                    onClick={() => removeCustomRole(r)}
-                    className="rounded-full border border-accent-neon/50 bg-emerald-500/15 px-3 py-1 text-xs text-white"
-                  >
-                    {r} ✕
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {selectedRoles.length === 0 && customRoles.length === 0 && (
-              <small className="mt-1 block text-[11px] text-red-400">
-                {t('createWizard.selectAtLeastOneRole')}
-              </small>
-            )}
-          </div>
-
-          {/* RÔLES RECHERCHÉS — ce que le founder veut recruter. OPTIONNEL,
-              affiché publiquement (Marketplace, fiche pact, modale Postuler).
-              Stocké off-chain (project_open_roles) après la création — voir
-              handleCreate : la description on-chain (280 octets) ne peut pas
-              contenir cette liste en plus du pitch + rôles founder + seed. */}
-          <div>
-            <span id="pact-wanted-roles-label" className={labelCls}>
-              {t('createWizard.wantedRolesLabel')}
-              <span className="ml-2 text-[11px] font-normal text-ink-400">
-                {wantedRoles.length}/{MAX_OPEN_ROLES}
-              </span>
-            </span>
-            <small className={hintCls}>
-              {t('createWizard.wantedRolesHint')}
-            </small>
-
-            {ROLE_GROUPS.map((group) => (
-              <div key={group.category} className="mt-2">
-                <p className="mb-1 text-[10px] uppercase tracking-wider text-ink-400">
-                  {group.category}
-                </p>
-                <div role="group" aria-labelledby="pact-wanted-roles-label" className="flex flex-wrap gap-2">
-                  {group.roles.map((r) => (
-                    <button
-                      key={r.id}
-                      type="button"
-                      onClick={() => toggleWantedRole(r.label)}
-                      disabled={!wantedRoles.includes(r.label) && wantedRoles.length >= MAX_OPEN_ROLES}
-                      className={
-                        'rounded-full border px-3 py-1 text-xs transition-colors disabled:opacity-40 ' +
-                        (wantedRoles.includes(r.label)
-                          ? 'border-accent-neon/60 bg-emerald-500/20 text-white'
-                          : 'border-white/10 text-ink-300 hover:text-white')
-                      }
-                    >
-                      {r.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
-
-            {/* Rôle recherché custom */}
-            <div className="mt-3 flex gap-2">
-              <input
-                className={inputCls}
-                placeholder={t('createWizard.wantedCustomRolePlaceholder')}
-                value={wantedCustomRole}
-                onChange={(e) => setWantedCustomRole(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addWantedCustomRole(); } }}
-              />
-              <button
-                type="button"
-                onClick={addWantedCustomRole}
-                disabled={wantedRoles.length >= MAX_OPEN_ROLES}
-                className="whitespace-nowrap rounded border border-accent-neon/40 bg-emerald-500/10 px-3 text-xs text-accent-neon hover:bg-emerald-500/20 disabled:opacity-40"
-              >
-                {t('createWizard.addRole')}
-              </button>
-            </div>
-            {wantedRoles.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {wantedRoles.map((r) => (
-                  <button
-                    key={r}
-                    type="button"
-                    onClick={() => toggleWantedRole(r)}
-                    className="rounded-full border border-accent-neon/50 bg-emerald-500/15 px-3 py-1 text-xs text-white"
-                  >
-                    {r} ✕
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* TA PART — avec suggestion */}
-          <div>
-            <label htmlFor="pact-my-share" className={labelCls}>{t('createWizard.myShareLabel')}</label>
-            <div className="flex items-center gap-2">
-              <input
-                id="pact-my-share"
-                type="number"
-                min={0}
-                max={100}
-                className={inputCls}
-                value={effectiveShare}
-                onChange={(e) => {
-                  setShareTouched(true);
-                  setMyShare(Number(e.target.value));
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => { setShareTouched(false); setMyShare(suggested); }}
-                className="whitespace-nowrap rounded border border-accent-violet/40 bg-violet-500/10 px-3 py-2 text-xs text-accent-violet hover:bg-violet-500/20"
-              >
-                {t('createWizard.suggested', { n: suggested })}
-              </button>
-            </div>
-
-            <div className="mt-2 rounded-lg border border-accent-violet/25 bg-violet-500/10 p-3 text-[11px] leading-snug text-ink-300">
-              💡 <strong className="text-white">{t('createWizard.suggestedNote', { n: suggested })}</strong>
-              {t('createWizard.suggestedBody', { count: selectedRoles.length + customRoles.length })}
-              <br />
-              {t('createWizard.remainingNote', { n: remainingForMembers })}
-            </div>
-
-            {isGreedy && (
-              <div className="mt-2 rounded-lg border border-amber-400/40 bg-amber-500/10 p-3 text-[11px] leading-snug text-amber-300">
-                ⚠️ <strong>{t('createWizard.greedyWarning', { n: effectiveShare })}</strong>{' '}
-                {t('createWizard.greedyBody', { cap, target: stage === 'invest' ? t('createWizard.investors') : t('createWizard.devs'), suggested })}
-              </div>
-            )}
-
-            <div className="mt-2 rounded-lg border border-emerald-400/25 bg-emerald-500/10 p-3 text-[11px] leading-snug text-emerald-300">
-              🧮 <strong>{t('createWizard.simulationLabel')}</strong>{' '}
-              {t('createWizard.simulationBody', { amount: (effectiveShare / 10).toFixed(2) })}
-            </div>
-          </div>
-
-          {/* WALLET PROTOCOLE — FIXE */}
-          <div>
-            <p className={labelCls}>{t('createWizard.platformWalletLabel')}</p>
-            <div className="flex items-center gap-2 rounded border border-white/10 bg-canvas-900/60 p-2">
-              <span className="flex-1 truncate font-mono text-[11px] text-ink-400">
-                {PLATFORM_WALLET}
-              </span>
-              <span className="rounded bg-white/5 px-2 py-0.5 text-[10px] text-ink-400">
-                {t('createWizard.platformWalletFixed')}
-              </span>
-            </div>
-            <small className={hintCls}>
-              {t('createWizard.platformWalletHint')}
-            </small>
-          </div>
-
-        </div>
-        </div>
-
-          {descWillTruncate && (
-            <div className="mt-3 rounded-lg border border-red-400/40 bg-red-500/10 p-3 text-[11px] leading-snug text-red-300">
-              ⚠️ <strong>{t('createWizard.descTruncateWarning', { used: descBytesUsed })}</strong>{' '}
-              {t('createWizard.descTruncateBody')}
-            </div>
-          )}
-
-          <button
-            type="button"
-            onClick={handleCreate}
-            disabled={loading || !title || (selectedRoles.length === 0 && customRoles.length === 0)}
-            className="w-full rounded-xl bg-accent-neon py-3.5 text-sm font-bold text-ink-900 transition hover:opacity-90 disabled:opacity-50"
-          >
-            {loading ? t('createWizard.creating') : t('createWizard.createButton')}
-          </button>
-        </div>
+        <PactStep1
+          t={t}
+          stages={STAGES}
+          title={title}
+          setTitle={setTitle}
+          description={description}
+          setDescription={setDescription}
+          setLogoFile={setLogoFile}
+          setBannerFile={setBannerFile}
+          stage={stage}
+          onStage={handleStage}
+          seedAmount={seedAmount}
+          setSeedAmount={setSeedAmount}
+          selectedRoles={selectedRoles}
+          toggleRole={toggleRole}
+          customRole={customRole}
+          setCustomRole={setCustomRole}
+          addCustomRole={addCustomRole}
+          customRoles={customRoles}
+          removeCustomRole={removeCustomRole}
+          wantedRoles={wantedRoles}
+          toggleWantedRole={toggleWantedRole}
+          wantedCustomRole={wantedCustomRole}
+          setWantedCustomRole={setWantedCustomRole}
+          addWantedCustomRole={addWantedCustomRole}
+          effectiveShare={effectiveShare}
+          suggested={suggested}
+          remainingForMembers={remainingForMembers}
+          cap={cap}
+          isGreedy={isGreedy}
+          onShareChange={(v) => {
+            setShareTouched(true);
+            setMyShare(v);
+          }}
+          onResetShare={() => {
+            setShareTouched(false);
+            setMyShare(suggested);
+          }}
+          descWillTruncate={descWillTruncate}
+          descBytesUsed={descBytesUsed}
+          loading={loading}
+          onCreate={handleCreate}
+        />
       )}
 
       {/* ═══════════ ÉTAPE 2 — MEMBRES ═══════════ */}
       {step === 2 && (
         <div className="space-y-4">
-          <p className="text-sm text-green-400">{t('createWizard.projectCreated', { id: projectId })}</p>
+          <p className="text-sm text-green-400">
+            {t('createWizard.projectCreated', { id: projectId })}
+          </p>
           {createSig && <TxLink sig={createSig} label={t('createWizard.creationTxLabel')} />}
           <div className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 p-3 text-left text-[11px] leading-relaxed text-emerald-200">
             {t('createWizard.canCloseNow')}
@@ -980,9 +776,7 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
               ⚠️ {mediaWarning}
             </div>
           )}
-          <p className="text-xs text-ink-400">
-            {t('createWizard.addMembersHint')}
-          </p>
+          <p className="text-xs text-ink-400">{t('createWizard.addMembersHint')}</p>
 
           <div className="rounded-lg border border-accent-violet/25 bg-violet-500/10 p-3 text-[11px] text-ink-300">
             💡 {t('createWizard.myShareReminder', { n: effectiveShare })}
@@ -1070,15 +864,18 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
                 )}
               </div>
 
-              <small className={hintCls}>
-                {t('createWizard.memberHint')}
-              </small>
+              <small className={hintCls}>{t('createWizard.memberHint')}</small>
             </div>
           ))}
 
           <button
             type="button"
-            onClick={() => setMembers([...members, { wallet: '', roleIds: [], customRole: '', role: '', share: 0, shareTouched: false }])}
+            onClick={() =>
+              setMembers([
+                ...members,
+                { wallet: '', roleIds: [], customRole: '', role: '', share: 0, shareTouched: false },
+              ])
+            }
             className="text-sm text-accent-violet hover:underline"
           >
             {t('createWizard.addMember')}
@@ -1098,8 +895,7 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
 
           <p
             className={
-              'text-sm font-bold ' +
-              (totalShares === 100 ? 'text-green-400' : 'text-amber-400')
+              'text-sm font-bold ' + (totalShares === 100 ? 'text-green-400' : 'text-amber-400')
             }
           >
             {t('createWizard.totalShares', { n: totalShares })}{' '}
@@ -1124,8 +920,12 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
 
           {addMemberProgress && (
             <div className="rounded-lg border border-accent-violet/30 bg-violet-500/10 p-3 text-center text-[11px] text-ink-200">
-              {t('createWizard.signatureProgress', { done: addMemberProgress.done + 1, total: addMemberProgress.total })}
-              {addMemberProgress.done > 0 && t('createWizard.signatureProgressDone', { n: addMemberProgress.done })}
+              {t('createWizard.signatureProgress', {
+                done: addMemberProgress.done + 1,
+                total: addMemberProgress.total,
+              })}
+              {addMemberProgress.done > 0 &&
+                t('createWizard.signatureProgressDone', { n: addMemberProgress.done })}
             </div>
           )}
 
@@ -1141,7 +941,10 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
             className="w-full rounded-xl bg-accent-violet py-3.5 text-sm font-bold text-ink-900 transition hover:bg-accent-violet/90 disabled:opacity-50"
           >
             {addMemberProgress
-              ? t('createWizard.signatureButton', { done: addMemberProgress.done + 1, total: addMemberProgress.total })
+              ? t('createWizard.signatureButton', {
+                  done: addMemberProgress.done + 1,
+                  total: addMemberProgress.total,
+                })
               : t('createWizard.addMembersButton')}
           </button>
         </div>
@@ -1149,88 +952,22 @@ export function CreatePactWizard({ onSuccess, onClose }: Props) {
 
       {/* ═══════════ ÉTAPE 3 — FINALISATION ═══════════ */}
       {step === 3 && (
-        <div className="space-y-4 text-center">
-          <p className="text-white">{t('createWizard.membersRegistered')}</p>
-
-          {memberSigs.length > 0 && (
-            <div className="rounded-lg border border-white/10 bg-canvas-900/60 p-3 text-left">
-              <p className="mb-1 text-[11px] font-semibold text-ink-300">
-                {t('createWizard.addMemberTxLabel')}
-              </p>
-              {memberSigs.map((m) => (
-                <TxLink key={m.sig} sig={m.sig} label={`${m.wallet.slice(0, 4)}…${m.wallet.slice(-4)}`} />
-              ))}
-            </div>
-          )}
-
-          <p className="text-sm text-ink-300">
-            {t('createWizard.nextStepsIntro')}
-          </p>
-          <div className="rounded-lg border border-accent-violet/25 bg-violet-500/10 p-3 text-left text-[11px] leading-snug text-ink-300">
-            <strong className="text-white">{t('createWizard.nextActionsHeading')}</strong>
-            <br />{t('createWizard.nextAction1')}
-            <br />{t('createWizard.nextAction2')}
-            <br />{t('createWizard.nextAction3')}
-          </div>
-
-          {/* Lien de partage direct — la fiche publique #/pact/:pda, lecture seule,
-              où chaque membre approuve avec SON wallet sans toucher au wizard créateur. */}
-          {shareUrl && (
-            <div className="glass-panel flex flex-col gap-3 rounded-lg border border-white/10 p-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0 flex-1 text-left">
-                <p className="mb-1 text-[10px] uppercase tracking-wider text-ink-400">
-                  {t('createWizard.shareLinkLabel')}
-                </p>
-                <p className="truncate rounded border border-white/10 bg-canvas-900/60 px-2 py-1.5 font-mono text-[11px] text-ink-300">
-                  {shareUrl}
-                </p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={handleCopyShareLink}
-                    className="inline-flex h-9 items-center rounded-lg border border-white/10 px-3 text-xs text-ink-300 hover:border-accent-violet/40 hover:text-white"
-                  >
-                    {linkCopied ? t('common.linkCopied') : t('common.copyLink')}
-                  </button>
-                  {canNativeShare && (
-                    <button
-                      type="button"
-                      onClick={handleNativeShare}
-                      className="inline-flex h-9 items-center rounded-lg border border-white/10 px-3 text-xs text-ink-300 hover:border-accent-violet/40 hover:text-white"
-                    >
-                      {t('createWizard.shareButton')}
-                    </button>
-                  )}
-                </div>
-              </div>
-              <div className="mx-auto shrink-0 rounded-xl bg-white p-2 sm:mx-0">
-                <QrCode value={shareUrl} size={88} />
-              </div>
-            </div>
-          )}
-
-          {/* ⚠️ Pas de bouton "Finaliser" ici : juste après add_member, TOUS les
-              nouveaux membres ont approved=false (seul le créateur est
-              auto-approuvé à la création). finalize() exige 100% d'approbations
-              (NotAllApproved côté programme) — donc essayer maintenant échoue à
-              coup sûr et redemande une signature pour rien. Le vrai bouton
-              Finaliser vit sur la page Pacts (PactCard), qui suit en live les
-              approbations on-chain et ne s'active QUE quand tout le monde a dit
-              oui — inutile de dupliquer cette logique ici. */}
-          <div className="rounded-lg border border-white/10 bg-canvas-900/40 p-3 text-left text-[11px] leading-snug text-ink-300">
-            {t('createWizard.finalizeNote')}
-          </div>
-          <button
-            type="button"
-            onClick={() => { clearDraft(); onSuccess(); }}
-            className="w-full rounded-xl border border-white/10 py-3.5 text-sm font-medium text-ink-200 transition hover:border-accent-violet/40 hover:text-white"
-          >
-            {t('createWizard.closeAndReturn')}
-          </button>
-        </div>
+        <PactStep3
+          t={t}
+          memberSigs={memberSigs}
+          shareUrl={shareUrl}
+          canNativeShare={canNativeShare}
+          linkCopied={linkCopied}
+          onCopyShareLink={handleCopyShareLink}
+          onNativeShare={handleNativeShare}
+          onCloseAndReturn={() => {
+            clearDraft();
+            onSuccess();
+          }}
+        />
       )}
 
-       {error && <p className="mt-4 text-sm text-red-400">{error}</p>}
+      {error && <p className="mt-4 text-sm text-red-400">{error}</p>}
     </div>
   );
 }

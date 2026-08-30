@@ -10,6 +10,7 @@
 import type { BuilderProfile, SkillLevel } from './profile';
 // Client Supabase partagé (voir supabaseClient.ts) — évite une 2e instance GoTrue/Realtime.
 import { supabase, isRemoteEnabled, SUPABASE_PROJECT_URL } from './supabaseClient';
+import { isPalette, type ThemeId } from './theme';
 import { translate, type Lang } from './i18n/translations';
 export { isRemoteEnabled };
 
@@ -40,6 +41,11 @@ function fromRemote(row: Record<string, unknown>): BuilderProfile {
     links: (row.links as Record<string, string>) ?? {},
     availability: row.available ? 'open' : 'busy',
     avatarUrl: (row.avatar_url as string | null) ?? null,
+    bannerUrl: (row.banner_url as string | null) ?? null,
+    // theme_palette hors liste connue ou absent -> null (pas de thème serveur,
+    // le choix local/nav reste le repli — voir ThemePreferenceSync dans App.tsx).
+    themePalette: isPalette(row.theme_palette) ? (row.theme_palette as ThemeId) : null,
+    hideWallet: Boolean(row.hide_wallet ?? false),
     updatedAt: row.updated_at ? new Date(row.updated_at as string).getTime() : 0,
   };
 }
@@ -165,6 +171,16 @@ export async function submitProfileUpdate(
           links: profile.links,
           available: profile.availability === 'open',
           avatar_url: profile.avatarUrl ?? '',
+          // ⚠️ Ces champs DOIVENT partir même si l'utilisateur n'a rien changé
+          // ici : l'Edge Function traite un champ absent comme "remettre à
+          // vide/false" (sanitizeProfile), pas comme "ne pas toucher". Les
+          // omettre efface silencieusement la bannière/le thème/la
+          // confidentialité à CHAQUE sauvegarde de profil — c'était le bug
+          // avant le correctif banner_url/theme_palette ; même piège pour
+          // hide_wallet, évité dès le départ ici.
+          banner_url: profile.bannerUrl ?? '',
+          theme_palette: profile.themePalette ?? '',
+          hide_wallet: profile.hideWallet ?? false,
         },
       }),
     });

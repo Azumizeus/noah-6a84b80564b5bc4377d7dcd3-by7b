@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { approve, distributeWithReceipt, closeProject, findVaultPda } from '../lib/anchor';
 import { useAnchorProgram } from '../hooks/useProjects';
-import { formatSol, formatAddress, parseTxError, explorerTxUrl, explorerAddressUrl } from '../lib/pacts';
+import { formatSol, formatAddress, parseTxError, explorerTxUrl, explorerAddressUrl, needsDescriptionMigration } from '../lib/pacts';
 import { logPactEvent } from '../lib/activity';
+import { triggerPushNotification } from '../lib/pushNotifications';
 import { fetchLatestChatTimestamp } from '../lib/chat';
 import { fetchVaultSummary } from '../lib/vault';
 import { isUnseen } from '../lib/seen';
@@ -11,20 +12,31 @@ import type { Pact, PactAction, DistributionReceipt } from '../types/pact';
 import type { ProjectMedia } from '../lib/media';
 import AddMemberModal from './AddMemberModal';
 import EditMediaModal from './EditMediaModal';
+import EditDescriptionModal from './EditDescriptionModal';
+import ImageHoverPreview from './ImageHoverPreview';
 import { parsePitch, stageBadgeLabel } from '../lib/pitch';
-
-// Dégradé de secours déterministe si pas de bannière uploadée (même logique que MarketplaceCard)
-function fallbackBannerStyle(seed: string): React.CSSProperties {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
-  const hue1 = hash % 360;
-  const hue2 = (hue1 + 60 + ((hash >> 8) % 60)) % 360;
-  return { background: `linear-gradient(135deg, hsl(${hue1} 70% 22%), hsl(${hue2} 70% 14%))` };
-}
 import PactTimeline from './pact/PactTimeline';
 import OrbitalCapTable from './pact/OrbitalCapTable';
 import VaultShareGauge from './pact/VaultShareGauge';
 import { useLanguage } from '../lib/i18n/LanguageContext';
+
+// Dégradé de secours déterministe si pas de bannière uploadée (même logique que MarketplaceCard)
+// Bande de teintes restreinte à vert↔violet (150°-290°) — couvre les
+// accents de marque (neon ≈152°, violet ≈262°) au lieu du cercle complet
+// 0-360°, qui pouvait tomber sur du rouge/orange/jaune hors charte.
+// Déterminisme par PDA inchangé : même seed → même dégradé à chaque rendu.
+const BANNER_HUE_MIN = 150;
+const BANNER_HUE_RANGE = 140; // 150 → 290
+
+function fallbackBannerStyle(seed: string): React.CSSProperties {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  const hue1 = BANNER_HUE_MIN + (hash % BANNER_HUE_RANGE);
+  const hue2 = BANNER_HUE_MIN + ((hash >> 8) % BANNER_HUE_RANGE);
+  return { background: `linear-gradient(135deg, hsl(${hue1} 70% 22%), hsl(${hue2} 70% 14%))` };
+}
+
+import SolUsdAmount from './SolUsdAmount';
 
 interface Props {
   pact: Pact;
@@ -54,6 +66,11 @@ interface Props {
    *  ne fait que dupliquer l'accès. Par défaut true (Dashboard/Pacts, où le
    *  bouton est le point d'entrée vers la fiche). */
   showOpenSheetButton?: boolean;
+  /** Densité d'affichage (réglages → "Densité d'affichage", 29/08). Réduit
+   *  uniquement le padding racine de la carte — pas de refonte de la mise
+   *  en page interne, pour rester sûr sur un composant déjà volumineux.
+   *  Par défaut false = comportement pixel-identique à avant ce réglage. */
+  dense?: boolean;
 }
 
 // ─── Reçus de distribution persistés en sessionStorage (survit à un reload) ───
@@ -104,13 +121,15 @@ export default function PactCard({
   media,
   onMediaUpdated,
   showOpenSheetButton = true,
+  dense = false,
 }: Props) {
-  const { publicKey } = useWallet();
+  const { publicKey, signMessage } = useWallet();
   const { t, lang } = useLanguage();
   const program = useAnchorProgram();
   const [fundAmount, setFundAmount] = useState('0.1');
   const [showAddMember, setShowAddMember] = useState(false);
   const [showEditMedia, setShowEditMedia] = useState(false);
+  const [showEditDescription, setShowEditDescription] = useState(false);
   const [approving, setApproving] = useState(false);
   const [approveError, setApproveError] = useState<string | null>(null);
   const [approveSig, setApproveSig] = useState<string | null>(null);
@@ -178,7 +197,27 @@ export default function PactCard({
       // l'utilisateur rafraîchit lui-même une fois qu'il l'a vu/copié.
       setApproveSig(sig);
       logPactEvent({ projectPda: pdaKey, kind: 'approve', actor: publicKey.toBase58(), txSig: sig });
-    } catch (e: any) {
+      // Push best-effort (29/08 nuit) — ne bloque jamais le flux principal
+      // ; les autres membres du pact sont notifiés si leur préférence
+      // "approbation" est activée côté serveur (voir pushNotifications.ts).
+      if (signMessage) {
+        const otherWallets = pact.members
+          .map((m) => m.wallet.toBase58())
+          .filter((w) => w !== publicKey.toBase58());
+        if (otherWallets.length > 0) {
+          triggerPushNotification({
+            actorWallet: publicKey.toBase58(),
+            projectPda: pdaKey,
+            type: 'approvals',
+            wallets: otherWallets,
+            title: pact.title,
+            body: t('pushNotif.approveBody', { wallet: formatAddress(publicKey.toBase58()) }),
+            url: `/#/pact/${pdaKey}`,
+            signMessage: (msg) => signMessage(msg),
+          }).catch(() => {});
+        }
+      }
+    } catch (e) {
       setApproveError(parseTxError(e));
     } finally {
       setApproving(false);
@@ -198,7 +237,7 @@ export default function PactCard({
       // valeur : le reçu ci-dessous est correct, mais les chiffres du haut de
       // la carte ne bougent qu'après un refresh manuel de la page.
       onDistributed?.();
-    } catch (e: any) {
+    } catch (e) {
       setDistributeError(parseTxError(e));
     } finally {
       setDistributing(false);
@@ -217,7 +256,7 @@ export default function PactCard({
       // sûr de faire disparaître ce pact de la liste sans état incohérent
       // (même pattern que AddMemberModal après un succès).
       window.location.reload();
-    } catch (e: any) {
+    } catch (e) {
       setCancelError(parseTxError(e));
       setCancelling(false);
     }
@@ -232,17 +271,20 @@ export default function PactCard({
         : !allApproved
           ? t('pactCard.approvalsCount', { done: approvedCount, total: pact.members.length })
           : '';
-            const isDetailView = !showOpenSheetButton;
-              const parsed = parsePitch(pact.description);
+
+  const isDetailView = !showOpenSheetButton;
+  const parsed = parsePitch(pact.description);
 
   return (
     <>
-      <article className="glass-panel group relative overflow-hidden rounded-2xl border border-white/5 p-6 transition-all hover:border-accent-violet/20">
+      <article className={'glass-panel card-lift group relative overflow-hidden rounded-2xl border border-white/5 ' + (dense ? 'p-3.5' : 'p-6')}>
         {/* Bannière — bleed jusqu'aux bords du card grâce à overflow-hidden sur <article> */}
         {isDetailView ? (
           <div className="-mx-6 -mt-6 mb-4 relative h-40 w-[calc(100%+3rem)] overflow-hidden sm:h-52">
             {media?.bannerUrl ? (
-              <img src={media.bannerUrl} alt="" className="h-full w-full object-cover" />
+              <ImageHoverPreview src={media.bannerUrl} alt={pact.title} kind="banner" className="h-full w-full">
+                <img src={media.bannerUrl} alt="" className="h-full w-full object-cover" />
+              </ImageHoverPreview>
             ) : (
               <div className="h-full w-full" style={fallbackBannerStyle(pdaKey)} />
             )}
@@ -254,7 +296,9 @@ export default function PactCard({
         ) : (
           media?.bannerUrl && (
             <div className="-mx-6 -mt-6 mb-4 h-28 w-[calc(100%+3rem)] sm:h-36">
-              <img src={media.bannerUrl} alt="" className="h-full w-full object-cover" />
+              <ImageHoverPreview src={media.bannerUrl} alt={pact.title} kind="banner" className="h-full w-full">
+                <img src={media.bannerUrl} alt="" className="h-full w-full object-cover" />
+              </ImageHoverPreview>
             </div>
           )
         )}
@@ -262,11 +306,13 @@ export default function PactCard({
         <div className="mb-4 flex items-start justify-between">
           <div className="flex items-start gap-3">
             {media?.logoUrl && (
-              <img
-                src={media.logoUrl}
-                alt=""
-                className="h-10 w-10 shrink-0 rounded-lg object-cover ring-1 ring-white/10"
-              />
+              <ImageHoverPreview src={media.logoUrl} alt={pact.title} kind="logo" className="shrink-0">
+                <img
+                  src={media.logoUrl}
+                  alt=""
+                  className="h-10 w-10 rounded-lg object-cover ring-1 ring-white/10"
+                />
+              </ImageHoverPreview>
             )}
             <div>
               {!isDetailView && (
@@ -341,9 +387,41 @@ export default function PactCard({
                 🖼️ {media?.logoUrl || media?.bannerUrl || media?.pitchVideoUrl ? t('pactCard.editMedia') : t('pactCard.addMedia')}
               </button>
             )}
+            {/* Édition de la description on-chain — voir EditDescriptionModal.tsx
+                pour pourquoi ce bouton n'existait nulle part avant : la fonction
+                update_description existait dans lib/anchor.ts, mais rien ne
+                l'appelait. needsDescriptionMigration() décide juste si on affiche
+                le bandeau "migration", pas si le bouton apparaît.
+
+                ⚠️ Verrou après finalisation : le programme rejette
+                update_description dès que le pact n'est plus Open
+                (lib.rs — require!(project.status == ProjectStatus::Open,
+                ErrorCode::AlreadyFinalized), erreur 6014). Modifier le texte
+                après coup reviendrait à altérer ce que les autres membres ont
+                approuvé. Le bouton était affiché à tout iAmCreator sans tenir
+                compte du statut → la transaction partait puis échouait on-chain.
+                On affiche donc un état verrouillé explicite à la place. */}
+            {iAmCreator &&
+              (pact.status !== 'active' ? (
+                <button
+                  type="button"
+                  onClick={() => setShowEditDescription(true)}
+                  className="text-[11px] text-ink-400 underline-offset-2 hover:text-accent-neon hover:underline"
+                >
+                  ✏️ Modifier la description
+                </button>
+              ) : (
+                <span
+                  className="text-[11px] text-ink-500"
+                  title="La description est figée une fois le pact finalisé : les membres ont approuvé ce texte, il ne peut plus être modifié on-chain."
+                >
+                  🔒 Description verrouillée (finalisé)
+                </span>
+              ))}
           </div>
         </div>
-                {isDetailView && (
+
+        {isDetailView && (
           <div className="mb-4 space-y-2">
             {parsed.stage && (
               <span className="inline-block rounded-full bg-violet-500/10 px-2.5 py-1 text-[11px] font-medium text-accent-violet">
@@ -360,6 +438,7 @@ export default function PactCard({
             )}
           </div>
         )}
+
         {isDetailView && (() => {
           // Bascule FR/EN sur le sélecteur de langue de l'app — si la traduction
           // anglaise n'a pas été remplie par le founder, on retombe sur le
@@ -380,11 +459,13 @@ export default function PactCard({
             </div>
           );
         })()}
+
         {isDetailView && (
           <div className="mb-4 border-t border-white/5 pt-4">
             <PactTimeline pact={pact} hasReceipt={!!receipt} />
           </div>
         )}
+
         {/* Entrée principale vers la fiche (chat + vault) — avant, seul un
             petit lien "🔗 Partager" (pensé pour un tiers) y menait, ce qui le
             rendait invisible comme point d'accès pour SOI-même : le seul
@@ -405,12 +486,14 @@ export default function PactCard({
             <p className="text-xs text-ink-400">{t('pactCard.claimable')}</p>
             <p className="mt-0.5 font-mono text-lg font-bold text-accent-neon">
               {formatSol(pact.myClaimableSol)} SOL
+              <SolUsdAmount sol={pact.myClaimableSol} />
             </p>
           </div>
           <div>
             <p className="text-xs text-ink-400">{t('pactCard.vaultBalance')}</p>
             <p className="mt-0.5 font-mono text-lg font-bold text-white">
               {formatSol(pact.vaultBalanceSol)} SOL
+              <SolUsdAmount sol={pact.vaultBalanceSol} />
             </p>
           </div>
           <div>
@@ -468,6 +551,7 @@ export default function PactCard({
             </div>
           </div>
         )}
+
         {isDetailView && pact.members.length > 0 && (
           <div className="mt-4 grid grid-cols-1 gap-4 border-t border-white/5 pt-4 sm:grid-cols-2">
             <OrbitalCapTable members={pact.members} creatorWallet={pact.creator.toBase58()} myWallet={myAddr} />
@@ -478,6 +562,7 @@ export default function PactCard({
             />
           </div>
         )}
+
         {walletConnected && (
           <div className="mt-6 space-y-3 border-t border-white/5 pt-4">
             {/* Phantom/Backpack font leur propre simulation de sécurité via LEUR
@@ -491,6 +576,7 @@ export default function PactCard({
             <p className="rounded-lg border border-amber-400/20 bg-amber-400/5 px-3 py-2 text-[11px] leading-relaxed text-amber-300/90">
               {t('pactCard.congestionNotice')}
             </p>
+
             {pact.status !== 'active' && (
               <div className="flex flex-col gap-2">
                 {iAmMember && !iHaveApproved && !approveSig && (
@@ -502,6 +588,7 @@ export default function PactCard({
                     {approving ? t('pactCard.approving') : t('pactCard.approveButton')}
                   </button>
                 )}
+
                 {approveSig && (
                   <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 space-y-2">
                     <p className="text-xs font-medium text-emerald-300">{t('pactCard.approvedOnChain')}</p>
@@ -521,11 +608,13 @@ export default function PactCard({
                     </button>
                   </div>
                 )}
+
                 {iAmMember && iHaveApproved && (
                   <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 py-2 text-center text-xs text-emerald-400">
                     {t('pactCard.youApproved')}
                   </div>
                 )}
+
                 {approveError && (
                   <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-400">
                     {approveError}
@@ -555,6 +644,7 @@ export default function PactCard({
                     {t('pactCard.cancelPactButton')}
                   </button>
                 )}
+
                 {iAmCreator && showCancelConfirm && (
                   <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 space-y-2">
                     <p className="text-xs text-red-300">
@@ -749,6 +839,22 @@ export default function PactCard({
           onSuccess={() => {
             setShowEditMedia(false);
             onMediaUpdated?.();
+          }}
+        />
+      )}
+
+      {showEditDescription && (
+        <EditDescriptionModal
+          projectPda={pact.pda}
+          projectTitle={pact.title}
+          currentDescription={pact.description}
+          isLegacyPact={needsDescriptionMigration(pact, publicKey)}
+          onClose={() => setShowEditDescription(false)}
+          onSuccess={() => {
+            // Même pattern que AddMemberModal/handleCancel : la description
+            // affichée vient de `pact` (prop figée), un reload complet est
+            // le moyen le plus sûr de la refléter sans état incohérent.
+            window.location.reload();
           }}
         />
       )}

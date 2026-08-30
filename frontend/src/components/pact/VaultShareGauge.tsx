@@ -30,7 +30,10 @@ export default function VaultShareGauge({ vaultBalanceSol, myShareBps, myClaimab
       >
         <div
           className="absolute bottom-0 left-0 right-0 bg-accent-neon/25 transition-[height] duration-1000 ease-out"
-          style={{ height: `${hasShare ? pct : 0}%` }}
+          style={{
+            height: `${hasShare ? pct : 0}%`,
+            boxShadow: hasShare ? '0 0 16px 2px rgb(var(--accent-neon-rgb) / 0.45)' : undefined,
+          }}
         />
         <div className="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-transparent" aria-hidden="true" />
         <div className="absolute inset-0 flex flex-col items-center justify-center">

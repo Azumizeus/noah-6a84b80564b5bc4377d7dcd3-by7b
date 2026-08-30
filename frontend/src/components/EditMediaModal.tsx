@@ -2,11 +2,28 @@
 // ═══════════════════════════════════════════════════════════════════
 // Modale founder-only pour ajouter/remplacer le logo et la bannière d'un
 // projet APRÈS sa création — même style que AddMemberModal (bg-[#0d0d15],
-// border-purple-500/30). Upload direct vers Supabase, pas de transaction
-// on-chain, donc pas de wallet à signer ici.
+// border-purple-500/30). Pas de transaction on-chain.
+//
+// ⚠️ Une SIGNATURE wallet est désormais requise, y compris pour l'upload du
+// FICHIER lui-même (migration 20260828190000 a fermé l'écriture publique du
+// bucket) : le serveur vérifie la signature PUIS, on-chain, que le
+// signataire est le founder, avant d'émettre une URL d'upload signée.
+//
+// Tout — logo, bannière, vidéo, à-propos — s'enregistre avec UNE SEULE
+// signature wallet, réutilisée pour chaque appel (voir lib/media.ts) :
+// signer une fois par champ aurait donné jusqu'à quatre popups d'affilée
+// pour une seule sauvegarde.
 // ═══════════════════════════════════════════════════════════════════
 import { useState } from 'react';
-import { uploadProjectMedia, setProjectVideo, validateVideoUrl, setProjectAbout, validateAboutText } from '../lib/media';
+import { useWallet } from '@solana/wallet-adapter-react';
+import {
+  uploadMediaFile,
+  saveProjectMedia,
+  signMediaWrite,
+  validateVideoUrl,
+  validateAboutText,
+  type ProjectMediaPatch,
+} from '../lib/media';
 import MediaPicker from './MediaPicker';
 import { useLanguage } from '../lib/i18n/LanguageContext';
 
@@ -34,6 +51,7 @@ export default function EditMediaModal({
   onSuccess,
 }: Props) {
   const { t } = useLanguage();
+  const { publicKey, signMessage } = useWallet();
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [bannerFile, setBannerFile] = useState<File | null>(null);
   const [videoUrl, setVideoUrl] = useState(currentVideoUrl ?? '');
@@ -59,30 +77,59 @@ export default function EditMediaModal({
       setError(videoError || aboutError || aboutEnError);
       return;
     }
+    if (!publicKey || !signMessage) {
+      setError("Connecte un wallet capable de signer un message pour enregistrer.");
+      return;
+    }
     setSaving(true);
     setError(null);
-    const failures: string[] = [];
 
+    // 0) Une signature pour tout le flux — réutilisée pour chaque upload de
+    // fichier ET pour l'enregistrement final (voir lib/media.ts).
+    const signed = await signMediaWrite(publicKey.toBase58(), projectPda, signMessage);
+    if ('error' in signed) {
+      setSaving(false);
+      setError(signed.error);
+      return;
+    }
+
+    // 1) Fichiers vers le bucket, chacun autorisé par la même signature.
+    const patch: ProjectMediaPatch = {};
     if (logoFile) {
-      const r = await uploadProjectMedia(projectPda, logoFile, 'logo');
-      if ('error' in r) failures.push(`Logo : ${r.error}`);
+      const r = await uploadMediaFile(projectPda, logoFile, 'logo', signed);
+      if ('error' in r) {
+        setSaving(false);
+        setError(`Logo : ${r.error}`);
+        return;
+      }
+      patch.logoUrl = r.url;
     }
     if (bannerFile) {
-      const r = await uploadProjectMedia(projectPda, bannerFile, 'banner');
-      if ('error' in r) failures.push(`Bannière : ${r.error}`);
+      const r = await uploadMediaFile(projectPda, bannerFile, 'banner', signed);
+      if ('error' in r) {
+        setSaving(false);
+        setError(`Bannière : ${r.error}`);
+        return;
+      }
+      patch.bannerUrl = r.url;
     }
-    if (videoChanged) {
-      const r = await setProjectVideo(projectPda, videoUrl);
-      if ('error' in r) failures.push(`Vidéo : ${r.error}`);
-    }
-    if (aboutChanged || aboutEnChanged) {
-      const r = await setProjectAbout(projectPda, aboutText, aboutTextEn);
-      if ('error' in r) failures.push(`À propos : ${r.error}`);
-    }
+    // Chaîne vide volontaire = effacement côté serveur (retirer une vidéo).
+    if (videoChanged) patch.pitchVideoUrl = videoUrl.trim();
+    if (aboutChanged) patch.aboutText = aboutText.trim();
+    if (aboutEnChanged) patch.aboutTextEn = aboutTextEn.trim();
+
+    // 2) Une seule écriture signée pour l'ensemble des champs — même
+    // signature que les uploads du dessus.
+    const saved = await saveProjectMedia(
+      projectPda,
+      patch,
+      { wallet: publicKey.toBase58(), signMessage },
+      signed
+    );
 
     setSaving(false);
-    if (failures.length > 0) {
-      setError(failures.join(' — '));
+    if ('error' in saved) {
+      setError(saved.error);
       return;
     }
     setDone(true);

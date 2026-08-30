@@ -1,5 +1,5 @@
 // src/lib/anchor.ts
-import { AnchorProvider, Program, BN } from '@coral-xyz/anchor';
+import { AnchorProvider, Program, BN, type Idl, type Wallet } from '@coral-xyz/anchor';
 import {
   Connection,
   PublicKey,
@@ -9,37 +9,125 @@ import {
   VersionedTransaction,
   LAMPORTS_PER_SOL,
   ComputeBudgetProgram,
+  type SendOptions,
 } from '@solana/web3.js';
 import idl from '../idl/buildpact.json';
-import { PROGRAM_ID, PROJECT_SEED, VAULT_SEED, RPC_ENDPOINT, getRpcEndpoint, rotateRpc, isRateLimitError } from './constants';
+import {
+  PROGRAM_ID,
+  PROJECT_SEED,
+  VAULT_SEED,
+  getRpcEndpoint,
+  rotateRpc,
+  getReadRpcEndpoint,
+  rotateReadRpc,
+  isRateLimitError,
+  isMethodNotAllowedError,
+  backoffDelayMs,
+} from './constants';
 import type { ChainPact } from './pacts';
-import type { DistributionReceipt } from '../types/pact';
+import type { DistributionReceipt, ProjectAccount, FetchedAccount } from '../types/pact';
+import { MAX_DESC_LEN } from './onchainLimits';
+import { truncateUtf8 } from './textSafety';
 
 const MAX_RETRIES = 3;
 
-export function getProvider(wallet: any): AnchorProvider {
-  const connection = new Connection(RPC_ENDPOINT, 'confirmed');
-  return new AnchorProvider(connection, wallet, {
+// ═══════════════════════════════════════════════════════════════════
+// TYPES DE FRONTIÈRE
+//
+// Ces interfaces remplacent les `any` qui traînaient dans ce fichier.
+// Aucune ne cherche à décrire Anchor en entier : elles décrivent
+// EXACTEMENT ce qu'on appelle, rien de plus. C'est volontaire — un type
+// trop ambitieux casse au prochain bump d'Anchor, un type minimal tient.
+//
+// ⚠️ Les casts restants passent par `unknown`, jamais par `any`. La
+// différence n'est pas cosmétique : `as any` désactive le typage pour
+// TOUT ce qui découle de la valeur, `as unknown as X` force à annoncer
+// une forme précise et s'arrête là.
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * Ce qu'on exige d'un wallet pour signer. Sur-ensemble volontairement
+ * permissif : wallet-adapter expose `sendTransaction`, certains wallets
+ * n'ont que `signTransaction` — buildAndSend() gère les deux chemins.
+ */
+export interface SignerWallet {
+  publicKey: PublicKey | null;
+  signTransaction?: (tx: VersionedTransaction) => Promise<VersionedTransaction>;
+  signAllTransactions?: (txs: VersionedTransaction[]) => Promise<VersionedTransaction[]>;
+  sendTransaction?: (
+    tx: VersionedTransaction,
+    connection: Connection,
+    options?: SendOptions
+  ) => Promise<string>;
+}
+
+/**
+ * Un builder Anchor (`program.methods.x(...).accounts(...)`).
+ * On n'en utilise QUE `.transaction()` — inutile de typer le reste.
+ */
+interface TxBuilder {
+  transaction: () => Promise<Transaction>;
+}
+
+/** Namespace de comptes du programme, typé sur notre IDL. */
+interface ProjectAccountNamespace {
+  project: {
+    fetch: (address: PublicKey) => Promise<ProjectAccount>;
+    all: () => Promise<FetchedAccount<ProjectAccount>[]>;
+  };
+}
+
+/**
+ * SEUL point d'accès aux comptes du programme.
+ *
+ * `program.account` est indexé dynamiquement par Anchor à partir de l'IDL,
+ * qu'on charge en JSON à l'exécution : TypeScript ne peut pas savoir que
+ * `project` existe. Le cast est confiné ici — au-delà, tout est typé.
+ */
+function projectAccounts(program: Program): ProjectAccountNamespace['project'] {
+  return (program as unknown as { account: ProjectAccountNamespace }).account.project;
+}
+
+/** Lecture défensive d'une erreur inconnue (catch typé `unknown`). */
+function errInfo(e: unknown): { message: string; name: string } {
+  const o = (e ?? {}) as { message?: unknown; name?: unknown };
+  return {
+    message: typeof o.message === 'string' ? o.message : '',
+    name: typeof o.name === 'string' ? o.name : '',
+  };
+}
+
+export function getProvider(wallet: SignerWallet): AnchorProvider {
+  // Liste d'ÉCRITURE : nœud dédié en premier. C'est lui qui fait atterrir les
+  // transactions de façon fiable (blockhash frais, propagation rapide) — le
+  // devnet public reste en repli.
+  const connection = new Connection(getRpcEndpoint(), 'confirmed');
+  return new AnchorProvider(connection, wallet as unknown as Wallet, {
     commitment: 'confirmed',
     preflightCommitment: 'confirmed',
   });
 }
 
 export function getProgram(provider: AnchorProvider): Program {
-  return new Program(idl as any, provider);
+  return new Program(idl as unknown as Idl, provider);
 }
 
 export function getReadonlyProgram(): Program {
-  const connection = new Connection(RPC_ENDPOINT, 'confirmed');
-  const dummyWallet = {
+  // Liste de LECTURE : devnet public en premier. Le nœud dédié refuse
+  // `getProgramAccounts` (-32401), or c'est exactement ce qu'appelle
+  // fetchAllProjects() — voir le commentaire détaillé dans constants.ts.
+  const connection = new Connection(getReadRpcEndpoint(), 'confirmed');
+  // Wallet factice : aucune écriture ne passe par ce provider, mais Anchor
+  // en exige un. Les deux méthodes rendent la transaction telle quelle.
+  const dummyWallet: SignerWallet = {
     publicKey: PublicKey.default,
-    signTransaction: async (tx: any) => tx,
-    signAllTransactions: async (txs: any[]) => txs,
+    signTransaction: async (tx) => tx,
+    signAllTransactions: async (txs) => txs,
   };
-  const provider = new AnchorProvider(connection, dummyWallet as any, {
+  const provider = new AnchorProvider(connection, dummyWallet as unknown as Wallet, {
     commitment: 'confirmed',
   });
-  return new Program(idl as any, provider);
+  return new Program(idl as unknown as Idl, provider);
 }
 
 export function findProjectPda(creator: PublicKey, projectId: string): [PublicKey, number] {
@@ -117,14 +205,18 @@ function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMsg: string): Pr
 
 async function buildAndSend(
   program: Program,
-  txBuilder: any
+  txBuilder: TxBuilder
 ): Promise<string> {
   const provider = program.provider as AnchorProvider;
-  const wallet = provider.wallet as any;
+  const wallet = provider.wallet as unknown as SignerWallet;
 
   if (!wallet?.publicKey || (!wallet?.sendTransaction && !wallet?.signTransaction)) {
     throw new Error('Wallet non connecté ou incapable de signer.');
   }
+
+  // Capturé APRÈS le garde : TypeScript ne conserve pas le narrowing d'une
+  // propriété à travers la boucle et les closures ci-dessous.
+  const owner: PublicKey = wallet.publicKey;
 
   let lastError: unknown = null;
 
@@ -173,7 +265,7 @@ async function buildAndSend(
       // plante plus. Solflare gère ça correctement en interne, d'où le
       // fait qu'il marchait déjà sans ce fix.
       const messageV0 = new TransactionMessage({
-        payerKey: wallet.publicKey as PublicKey,
+        payerKey: owner,
         recentBlockhash: blockhash,
         instructions,
       }).compileToV0Message();
@@ -191,7 +283,7 @@ async function buildAndSend(
           WALLET_TIMEOUT_MS,
           timeoutMsg
         );
-      } else {
+      } else if (typeof wallet.signTransaction === 'function') {
         // ═══ REPLI : wallets ne supportant que signTransaction (rare) ═══
         const signed = (await withTimeout(
           wallet.signTransaction(vtx),
@@ -199,7 +291,7 @@ async function buildAndSend(
           timeoutMsg
         )) as VersionedTransaction;
 
-        const idx = signed.message.staticAccountKeys.findIndex((k) => k.equals(wallet.publicKey));
+        const idx = signed.message.staticAccountKeys.findIndex((k) => k.equals(owner));
         const mySig = idx >= 0 ? signed.signatures[idx] : null;
         const isZeroed = !mySig || mySig.every((b) => b === 0);
         if (isZeroed) {
@@ -213,15 +305,17 @@ async function buildAndSend(
           skipPreflight: true,
           maxRetries: 5,
         });
+      } else {
+        throw new Error('Wallet non connecté ou incapable de signer.');
       }
 
       // ④ Confirmation par polling de signature (robuste)
       await confirmBySignature(connection, sig, lastValidBlockHeight);
 
       return sig;
-    } catch (e: any) {
+    } catch (e: unknown) {
       lastError = e;
-      const msg: string = e?.message ?? '';
+      const { message: msg, name: errName } = errInfo(e);
       const lowerMsg = msg.toLowerCase();
 
       // ═══ Cas DÉFINITIFS : jamais de retry (le refus était volontaire, ou
@@ -238,8 +332,8 @@ async function buildAndSend(
         // — donnant l'impression d'une boucle infinie pour un bug qui aurait dû
         // s'afficher clairement dès la première tentative.
         lowerMsg.includes('transaction échouée on-chain') ||
-        e?.name === 'WalletSignTransactionError' ||
-        e?.name === 'WalletNotConnectedError';
+        errName === 'WalletSignTransactionError' ||
+        errName === 'WalletNotConnectedError';
 
       if (isFatal) throw e;
 
@@ -314,6 +408,48 @@ export async function removeMember(
   const builder = program.methods
     .removeMember(memberWallet)
     .accounts({ project: projectPda, creator });
+
+  return buildAndSend(program, builder);
+}
+
+/**
+ * update_description — ajoutée par l'upgrade du 27/08 (sig 67Vmcg4F…).
+ *
+ * Double usage, et c'est le même appel dans les deux cas :
+ *
+ *  1. Corriger la description d'un pact existant.
+ *  2. MIGRER un vieux pact. Un compte Project créé avant l'upgrade reste
+ *     alloué à son ancienne taille — `realloc` ne se déclenche qu'au moment
+ *     où une instruction écrit dedans. Réécrire la MÊME description suffit
+ *     donc à agrandir le compte : l'opération est idempotente côté données,
+ *     mais pas côté allocation. C'est exactement ce que fait
+ *     MigratePactButton.
+ *
+ * `creator` est writable ET signer : le realloc consomme du rent, prélevé
+ * sur lui. Un membre non-creator sera rejeté on-chain (contrainte
+ * `relations: ["project"]` dans l'IDL).
+ *
+ * La troncature UTF-8 est appliquée ici plutôt que dans l'appelant : le
+ * programme mesure en OCTETS, et une description recopiée telle quelle
+ * depuis un ancien pact peut déjà être à la limite. Sans ce garde-fou, la
+ * migration échouerait en InvalidParameter (6005) — l'erreur la plus
+ * opaque du lot, puisque l'utilisateur n'a rien tapé lui-même.
+ */
+export async function updateDescription(
+  program: Program,
+  creator: PublicKey,
+  projectPda: PublicKey,
+  description: string
+) {
+  const safe = truncateUtf8(description, MAX_DESC_LEN);
+
+  const builder = program.methods
+    .updateDescription(safe)
+    .accounts({
+      project: projectPda,
+      creator,
+      systemProgram: SystemProgram.programId,
+    });
 
   return buildAndSend(program, builder);
 }
@@ -396,7 +532,7 @@ export async function distributeWithReceipt(
   pact: ChainPact
 ): Promise<DistributionReceipt> {
   // ① Source de vérité : le compte projet on-chain
-  const projectAccount = await (program.account as any).project.fetch(pact.pda);
+  const projectAccount = await projectAccounts(program).fetch(pact.pda);
   const protocolWallet: PublicKey = projectAccount.protocolWallet;
 
   // ② Envoi de la transaction (même logique que distribute())
@@ -454,21 +590,51 @@ export async function closeProject(
   return buildAndSend(program, builder);
 }
 
-export async function fetchProject(program: Program, projectPda: PublicKey) {
-  return (program.account as any).project.fetch(projectPda);
+// Lectures de comptes — toutes passent par projectAccounts() (voir en haut
+// du fichier), qui est le seul endroit où le cast a lieu.
+
+export async function fetchProject(
+  program: Program,
+  projectPda: PublicKey
+): Promise<ProjectAccount> {
+  return projectAccounts(program).fetch(projectPda);
 }
 
-export async function fetchAllProjects(program: Program) {
-  for (let attempt = 1; attempt <= 3; attempt++) {
+/**
+ * Scan complet du programme (`getProgramAccounts`). C'est l'appel le plus
+ * fragile de l'application : coûteux côté nœud, donc soit bridé (Helius :
+ * -32401), soit throttlé (devnet public : 429 sous charge).
+ *
+ * Deux cas d'échec, deux traitements :
+ *  - méthode refusée → inutile d'attendre, le refus est permanent sur cet
+ *    endpoint : on tourne immédiatement ;
+ *  - throttle → on tourne ET on attend, avec un délai qui double. Sans ce
+ *    backoff, les 3 tentatives partaient en quelques millisecondes et se
+ *    faisaient rejeter par la même fenêtre de limitation.
+ */
+const READ_RETRIES = 3;
+
+export async function fetchAllProjects(
+  program: Program
+): Promise<FetchedAccount<ProjectAccount>[]> {
+  let lastError: unknown = null;
+
+  for (let attempt = 1; attempt <= READ_RETRIES; attempt++) {
     try {
-      return await (program.account as any).project.all();
+      return await projectAccounts(program).all();
     } catch (e) {
-      if (isRateLimitError(e) && attempt < 3) {
-        rotateRpc();
-        program = getReadonlyProgram();
-        continue;
+      lastError = e;
+      const recoverable = isRateLimitError(e) || isMethodNotAllowedError(e);
+      if (!recoverable || attempt === READ_RETRIES) throw e;
+
+      rotateReadRpc();
+      program = getReadonlyProgram();
+
+      if (isRateLimitError(e)) {
+        await new Promise((r) => setTimeout(r, backoffDelayMs(attempt)));
       }
-      throw e;
     }
   }
+
+  throw lastError;
 }

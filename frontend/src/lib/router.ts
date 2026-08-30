@@ -1,9 +1,12 @@
 // src/lib/router.ts
 import { useEffect, useState } from 'react';
 
-export type Route = '/' | '/pacts' | '/marketplace' | '/treasury' | '/docs' | '/about' | '/profile' | '/home' | '/builders';
+export type Route = '/' | '/pacts' | '/marketplace' | '/treasury' | '/docs' | '/about' | '/profile' | '/home' | '/builders' | '/network' | '/leaderboard';
 
-const VALID: Route[] = ['/', '/pacts', '/marketplace', '/treasury', '/docs', '/about', '/profile', '/home', '/builders'];
+// ⚠️ Toute route absente de VALID retombe silencieusement sur '/' — pas de
+// 404, pas d'avertissement. Ajouter une entrée au type sans l'ajouter ici
+// donne un lien qui « ne fait rien » et se debug très mal.
+const VALID: Route[] = ['/', '/pacts', '/marketplace', '/treasury', '/docs', '/about', '/profile', '/home', '/builders', '/network', '/leaderboard'];
 
 function readHash(): Route {
   const raw = window.location.hash.replace(/^#/, '');

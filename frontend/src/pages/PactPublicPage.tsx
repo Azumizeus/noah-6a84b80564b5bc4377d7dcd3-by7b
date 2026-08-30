@@ -1,175 +1,112 @@
 // src/pages/PactPublicPage.tsx
 // ═══════════════════════════════════════════════════════════════════
-// Fiche projet publique — #/pact/:pda
-// Pensée pour un juge qui clique un lien : rôles/parts/statut visibles
-// SANS connecter de wallet (usePublicPact() utilise getReadonlyProgram()).
-// Si un wallet EST connecté, les actions habituelles (approuver, financer,
-// finaliser, distribuer) restent disponibles via PactCard — bonus, pas requis.
+// Route #/pact/<pda> — fiche publique en lecture seule, accessible SANS
+// wallet connecté (c'est le lien partagé par le founder). Les actions
+// on-chain restent disponibles si un wallet est branché : chaque membre
+// approuve avec SON wallet depuis cette page, sans passer par le wizard.
 // ═══════════════════════════════════════════════════════════════════
-import { useCallback, useEffect, useState } from 'react';
+import { usePublicPact, usePactActions, useProjects } from '../hooks/useProjects';
 import { useWallet } from '@solana/wallet-adapter-react';
+import { usePactPdaParam } from '../lib/router';
+import { useProjectMedia } from '../hooks/useProjectMedia';
+import { useLanguage } from '../lib/i18n/LanguageContext';
 import { DashboardLayout, FadeInUp } from '../components/DashboardLayout';
 import AppWalletButton from '../components/AppWalletButton';
 import PactCard from '../components/PactCard';
-import OpenRolesPanel from '../components/OpenRolesPanel';
-import EmptyState from '../components/EmptyState';
-import QrCode from '../components/QrCode';
-import ActivityFeed from '../components/ActivityFeed';
-import VideoEmbed from '../components/VideoEmbed';
-import UpdatesFeed from '../components/UpdatesFeed';
+import TxBanner from '../components/TxBanner';
 import ChatBox from '../components/ChatBox';
 import VaultPanel from '../components/VaultPanel';
-import { usePublicPact, usePactActions } from '../hooks/useProjects';
-import { pactPublicUrl, useVaultDocParam } from '../lib/router';
-import { fetchProjectMedia, type ProjectMedia } from '../lib/media';
-import { useLanguage } from '../lib/i18n/LanguageContext';
-import { markSeenNow } from '../lib/seen';
+import ReorderableSection from '../components/ReorderableSection';
+import { useSectionOrder } from '../hooks/useSectionOrder';
 
 interface Props {
-  pda: string;
+  // App.tsx passe le PDA extrait du hash. Optionnel pour rester utilisable
+  // sans prop (la page sait le relire elle-même via usePactPdaParam).
+  pda?: string;
 }
 
-export function PactPublicPage({ pda }: Props) {
-  const { connected } = useWallet();
+export default function PactPublicPage({ pda: pdaProp }: Props = {}) {
   const { t } = useLanguage();
+  const pdaFromHash = usePactPdaParam();
+  const pda = pdaProp ?? pdaFromHash;
+  const { connected, publicKey } = useWallet();
   const { pact, loading, error } = usePublicPact(pda);
-  const focusDocId = useVaultDocParam();
+  const { media, refresh: refreshMedia } = useProjectMedia();
+  // Réordonnancement des 3 blocs de cette fiche (29/08, soir) — même
+  // mécanisme que la colonne latérale du profil. Fonctionne aussi SANS
+  // wallet connecté (page publique) : useSectionOrder retombe sur une
+  // clé non scopée par wallet dans ce cas (préférence de navigateur).
+  const sectionOrder = useSectionOrder(
+    'pact-detail',
+    publicKey?.toBase58() ?? null,
+    ['pact', 'chat', 'vault'] as const
+  );
 
-  // Marque le chat "vu" dès qu'on affiche cette fiche (lecture publique,
-  // pas besoin de signature) — fait disparaître le badge "nouveau message"
-  // de la liste des pacts. Le vault, lui, se marque vu à l'unlock (signature
-  // requise) — voir onVaultUnlocked plus bas.
-  useEffect(() => {
-    if (pda) markSeenNow('chat', pda);
-  }, [pda]);
-  // Refresh simple : la page publique n'a pas de liste à rafraîchir,
-  // on recharge la fiche via un reload — cohérent avec PactCard ailleurs.
-  const { busyId, busyAction, runFund, runFinalize } = usePactActions(() => window.location.reload());
-  const [copied, setCopied] = useState(false);
-  const [media, setMedia] = useState<ProjectMedia | undefined>(undefined);
+  // refresh() global : après une action on-chain (approve/fund/finalize) la
+  // liste ET cette fiche doivent repartir du RPC. usePublicPact se recharge
+  // via son propre effet quand le wallet change ; ici on force un remount
+  // par rechargement de route pour rester simple et ne pas dupliquer l'état.
+  const { refresh } = useProjects();
+  const actions = usePactActions(refresh);
 
-  const refreshMedia = useCallback(() => {
-    fetchProjectMedia(pda).then((m) => setMedia(m ?? undefined));
-  }, [pda]);
+  if (loading) {
+    return <div className="skeleton h-64 w-full rounded-2xl" aria-hidden="true" />;
+  }
 
-  useEffect(() => {
-    refreshMedia();
-  }, [refreshMedia]);
-
-  const shareUrl = pactPublicUrl(pda);
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      /* clipboard indisponible (contexte non sécurisé, permission refusée...) — non bloquant */
-    }
-  };
+  if (error || !pact) {
+    return (
+      <p className="rounded-xl border border-red-400/30 bg-red-400/10 p-4 text-sm text-red-300">
+        {t('common.rpcErrorPrefix')} {error ?? 'Pact introuvable.'}
+      </p>
+    );
+  }
 
   return (
     <DashboardLayout walletSlot={<AppWalletButton />}>
-      <FadeInUp>
-        <header className="mb-6 sm:mb-8">
-          <p className="font-mono text-xs uppercase tracking-wider text-accent-neon">{t('publicPact.eyebrow')}</p>
-          <h1 className="mt-1 font-sans text-2xl font-bold tracking-tight text-white sm:text-3xl">
-            {t('publicPact.titleLine1')} <span className="text-accent-violet">{t('publicPact.titleLine2')}</span>
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm text-ink-300">
-            {t('publicPact.subtitle')}
-          </p>
-        </header>
-      </FadeInUp>
-
-      {loading ? (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <div className="glass-panel h-64 animate-pulse rounded-2xl lg:col-span-2" aria-hidden="true" />
-          <div className="glass-panel h-64 animate-pulse rounded-2xl" aria-hidden="true" />
-        </div>
-      ) : error || !pact ? (
-        <FadeInUp>
-          <EmptyState
-            title={t('publicPact.notFoundTitle')}
-            description={t('publicPact.notFoundDesc', { error: error ?? '' })}
-            ctaLabel={t('publicPact.notFoundCta')}
-            onCta={() => { window.location.hash = '#/pacts'; }}
-          />
-        </FadeInUp>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <div className="space-y-4 lg:col-span-2">
-            {media?.pitchVideoUrl && (
-              <FadeInUp>
-                <VideoEmbed url={media.pitchVideoUrl} />
-              </FadeInUp>
-            )}
-            <FadeInUp>
-              <PactCard
-                pact={pact}
-                walletConnected={connected}
-                busyAction={busyId === pact.pda.toBase58() ? busyAction : null}
-                onFund={runFund}
-                onFinalize={runFinalize}
-                media={media}
-                onMediaUpdated={refreshMedia}
-                showOpenSheetButton={false}
-              />
-            </FadeInUp>
-            <FadeInUp>
-              <OpenRolesPanel
-                projectPda={pact.pda.toBase58()}
-                creatorWallet={pact.creator.toBase58()}
-              />
-            </FadeInUp>
-          </div>
-
-          <div className="space-y-4">
-            <FadeInUp>
-              <div className="glass-panel p-4 text-center">
-                <h3 className="mb-3 font-sans text-sm font-semibold text-white">{t('publicPact.shareHeading')}</h3>
-                <div className="mx-auto w-fit rounded-xl bg-white p-3">
-                  <QrCode value={shareUrl} size={148} />
-                </div>
-                <p className="mt-2 text-[11px] text-ink-400">
-                  {t('publicPact.scanHint')}
-                </p>
-                <button
-                  type="button"
-                  onClick={handleCopy}
-                  className="mt-3 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-xs text-ink-300 transition hover:border-accent-violet/40 hover:text-white"
-                >
-                  {copied ? t('common.linkCopied') : t('common.copyLink')}
-                </button>
-              </div>
-            </FadeInUp>
-
-            <FadeInUp>
-              <VaultPanel
-                projectPda={pact.pda.toBase58()}
-                members={pact.members}
-                creatorWallet={pact.creator.toBase58()}
-                focusDocId={focusDocId}
-                onUnlocked={() => markSeenNow('vault', pact.pda.toBase58())}
-              />
-            </FadeInUp>
-
-            <FadeInUp>
-              <ChatBox projectPda={pact.pda.toBase58()} creatorWallet={pact.creator.toBase58()} />
-            </FadeInUp>
-
-            <FadeInUp>
-              <UpdatesFeed projectPda={pact.pda.toBase58()} members={pact.members} />
-            </FadeInUp>
-
-            <FadeInUp>
-              <ActivityFeed projectPda={pact.pda.toBase58()} />
-            </FadeInUp>
-          </div>
-        </div>
+    <div className="space-y-6">
+      {actions.txState && (
+        <TxBanner state={actions.txState} onDismiss={actions.clearTxState} />
       )}
+
+      {/* ⚠️ RÉGRESSION CORRIGÉE (historique) — le chat avait disparu de cette
+          page une fois, perdu dans un refactor sans la moindre erreur. Les 3
+          blocs ci-dessous (pact/chat/vault) sont désormais réordonnables
+          (29/08, soir) — l'ORDRE de rendu suit sectionOrder.order, mais
+          chaque bloc individuel reste inchangé en interne. */}
+      {sectionOrder.order.map((key) => {
+        const block =
+          key === 'pact' ? (
+            <PactCard
+              pact={pact}
+              walletConnected={connected}
+              busyAction={actions.busyAction}
+              onFund={actions.runFund}
+              onFinalize={actions.runFinalize}
+              clearTopBanner={actions.clearTxState}
+              onDistributed={refresh}
+              media={media.get(pact.pda.toBase58())}
+              onMediaUpdated={refreshMedia}
+              showOpenSheetButton={false}
+            />
+          ) : key === 'chat' ? (
+            <ChatBox projectPda={pact.pda.toBase58()} creatorWallet={pact.creator.toBase58()} />
+          ) : (
+            <VaultPanel projectPda={pact.pda.toBase58()} members={pact.members} creatorWallet={pact.creator.toBase58()} />
+          );
+        return (
+          <FadeInUp key={key}>
+            <ReorderableSection
+              canMoveUp={!sectionOrder.isFirst(key)}
+              canMoveDown={!sectionOrder.isLast(key)}
+              onMoveUp={() => sectionOrder.moveUp(key)}
+              onMoveDown={() => sectionOrder.moveDown(key)}
+            >
+              {block}
+            </ReorderableSection>
+          </FadeInUp>
+        );
+      })}
+    </div>
     </DashboardLayout>
   );
 }
-
-export default PactPublicPage;

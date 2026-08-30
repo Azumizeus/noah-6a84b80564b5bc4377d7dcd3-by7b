@@ -6,7 +6,19 @@
 // ajouter une demanderait de redéployer le programme à 4 jours de la
 // deadline. Voir supabase/role_interests.sql pour le schéma.
 // ═══════════════════════════════════════════════════════════════════
+//
+// ⚠️ Depuis la migration 20260828180000, l'écriture passe par l'Edge
+// Function `project-write` : la policy INSERT publique permettait de
+// déposer des candidatures au nom d'un autre wallet, ce qui pollue la
+// boîte du founder et discrédite un builder à son insu.
+// `applicant_wallet` vient désormais de la signature vérifiée.
 import { supabase, isRemoteEnabled } from './supabaseClient';
+import {
+  buildApplySignMessage,
+  callProjectWrite,
+  signForProjectWrite,
+  type SignMessageFn,
+} from './projectWrite';
 
 export interface RoleInterest {
   id: number;
@@ -30,25 +42,42 @@ function fromRemote(row: Record<string, unknown>): RoleInterest {
 
 export { isRemoteEnabled as applicationsEnabled };
 
-/** Enregistre une candidature. Retourne true si écrite avec succès. */
+/**
+ * Enregistre une candidature. Exige une signature du wallet candidat.
+ *
+ * Renvoie un objet plutôt qu'un booléen : avec une signature dans la
+ * boucle, l'échec le plus fréquent devient « l'utilisateur a refusé le
+ * popup », et afficher « échec de l'envoi » dans ce cas serait trompeur.
+ */
 export async function submitApplication(input: {
   projectPda: string;
   roleWanted: string;
   applicantWallet: string;
   message: string;
-}): Promise<boolean> {
-  if (!supabase) return false;
-  const { error } = await supabase.from('role_interests').insert({
-    project_pda: input.projectPda,
-    role_wanted: input.roleWanted,
-    applicant_wallet: input.applicantWallet,
-    message: input.message.slice(0, 400),
+  signMessage: SignMessageFn;
+}): Promise<{ ok: true } | { error: string }> {
+  if (!isRemoteEnabled) return { error: 'Backend non configuré.' };
+
+  const signed = await signForProjectWrite(
+    input.signMessage,
+    buildApplySignMessage(input.applicantWallet, input.projectPda, Date.now())
+  );
+  if ('error' in signed) return { error: signed.error };
+
+  const r = await callProjectWrite({
+    action: 'apply',
+    projectPda: input.projectPda,
+    message: signed.message,
+    signature: signed.signature,
+    roleWanted: input.roleWanted,
+    applyMessage: input.message.slice(0, 400),
   });
-  if (error) {
-    console.warn('[applications] insert error:', error.message);
-    return false;
+
+  if ('error' in r) {
+    console.warn('[applications] refusé:', r.error);
+    return { error: r.error };
   }
-  return true;
+  return { ok: true };
 }
 
 /** Liste les candidatures reçues pour un projet (visible publiquement, comme le fil d'activité). */

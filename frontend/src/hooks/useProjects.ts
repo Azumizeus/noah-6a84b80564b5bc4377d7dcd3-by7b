@@ -8,7 +8,10 @@ import {
   fetchAllProjects, fetchProject, distribute, fund, finalize,
 } from '../lib/anchor';
 import { parseTxError, type ChainPact } from '../lib/pacts';
-import { logPactEvent } from '../lib/activity';
+import type { ProjectAccount } from '../types/pact';
+import { logPactEvent, fetchMoneyEvents } from '../lib/activity';
+import { triggerPushNotification } from '../lib/pushNotifications';
+import { filterVisiblePacts } from '../lib/hiddenPacts';
 import { useLanguage } from '../lib/i18n/LanguageContext';
 
 /** Program Anchor : wallet réel si connecté, readonly sinon */
@@ -26,11 +29,54 @@ export function useAnchorProgram(): Program {
   }, [publicKey, signTransaction, signAllTransactions, sendTransaction]);
 }
 
-/** Pacts de test technique à ne jamais montrer publiquement (voir audit UI/UX #3) */
-const HIDDEN_PACT_PDAS = new Set([
-  '2n32pfWXDbYLLzy9ky3vj6xH4PFM2S7EXAGqsF83aLqc', // Nexus Markdown Ünïcode (test)
-  'FBHXCus7YeeXNC9ZuRnhePvkyW798wetc3dA4x5Zg2Zc', // Café (test)
-]);
+// La liste a été DÉPLACÉE dans src/lib/hiddenPacts.ts.
+//
+// Elle était privée à ce fichier, donc invisible et inaccessible pour toute
+// nouvelle surface d'affichage : c'est exactement ainsi que des pacts de
+// test sont réapparus dans le sélecteur de pact de référence des posts.
+// Une règle métier globale n'a pas sa place dans le détail d'un hook.
+// Voir le commentaire d'en-tête de hiddenPacts.ts.
+
+/**
+ * Convertit un compte Project brut en ChainPact.
+ *
+ * Extrait de useProjects() ET de usePublicPact() : les deux faisaient le
+ * MÊME mapping, dupliqué à l'identique. Une divergence entre les deux copies
+ * aurait produit un pact qui s'affiche différemment selon qu'on arrive par
+ * la grille ou par son lien public — un bug quasi impossible à reproduire
+ * sans savoir que la duplication existe.
+ */
+function toChainPact(
+  pda: PublicKey,
+  p: ProjectAccount,
+  vaultLamports: number,
+  viewer: PublicKey | null
+): ChainPact {
+  const vaultBalanceSol = vaultLamports / LAMPORTS_PER_SOL;
+  const me = viewer ? p.members.find((m) => m.wallet.equals(viewer)) : undefined;
+  const myShareBps = me?.shareBps ?? 0;
+
+  return {
+    pda,
+    projectId: p.projectId,
+    title: p.title,
+    description: p.description,
+    creator: p.creator,
+    members: p.members.map((m) => ({
+      wallet: m.wallet,
+      role: m.role,
+      shareBps: m.shareBps,
+      approved: m.approved,
+    })),
+    // Enum Anchor : `{ pending: {} }` ou `{ finalized: {} }` — voir
+    // ProjectStatus dans src/types/pact.ts.
+    status: 'finalized' in p.status ? 'active' : 'pending',
+    protocolWallet: p.protocolWallet,
+    vaultBalanceSol,
+    myShareBps,
+    myClaimableSol: (vaultBalanceSol * myShareBps) / 10_000,
+  };
+}
 
 /** Charge TOUS les projets on-chain + balances des vaults (1 seul appel RPC batch) */
 export function useProjects() {
@@ -52,39 +98,14 @@ export function useProjects() {
       setError(null);
       try {
         const raw = await fetchAllProjects(program);
-        const vaultPdas = raw.map((r: any) => findVaultPda(r.publicKey as PublicKey)[0]);
+        const vaultPdas = raw.map((r) => findVaultPda(r.publicKey)[0]);
         const vaultInfos = await connection.getMultipleAccountsInfo(vaultPdas);
 
-        const mapped: ChainPact[] = raw.map((r: any, i: number) => {
-          const p = r.account;
-          const vaultSol = (vaultInfos[i]?.lamports ?? 0) / LAMPORTS_PER_SOL;
-          const me = publicKey
-            ? p.members.find((m: any) => (m.wallet as PublicKey).equals(publicKey))
-            : undefined;
-          const myShareBps: number = me ? me.shareBps : 0;
-          const finalized = 'finalized' in p.status;
+        const mapped: ChainPact[] = raw.map((r, i) =>
+          toChainPact(r.publicKey, r.account, vaultInfos[i]?.lamports ?? 0, publicKey)
+        );
 
-          return {
-            pda: r.publicKey as PublicKey,
-            projectId: p.projectId as string,
-            title: p.title as string,
-            description: p.description as string,
-            creator: p.creator as PublicKey,
-            members: (p.members as any[]).map((m) => ({
-              wallet: m.wallet as PublicKey,
-              role: m.role as string,
-              shareBps: m.shareBps as number,
-              approved: m.approved as boolean,
-            })),
-            status: finalized ? 'active' : 'pending',
-            protocolWallet: p.protocolWallet as PublicKey,
-            vaultBalanceSol: vaultSol,
-            myShareBps,
-            myClaimableSol: (vaultSol * myShareBps) / 10_000,
-          };
-        });
-
-        if (!cancelled) setPacts(mapped.filter(p => !HIDDEN_PACT_PDAS.has(p.pda.toString())));
+        if (!cancelled) setPacts(filterVisiblePacts(mapped, (p) => p.pda));
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
       } finally {
@@ -128,34 +149,11 @@ export function usePublicPact(pdaBase58: string | null) {
       try {
         const pda = new PublicKey(pdaBase58 as string);
         const program = getReadonlyProgram();
-        const p: any = await fetchProject(program, pda);
+        const p = await fetchProject(program, pda);
         const [vaultPda] = findVaultPda(pda);
         const vaultInfo = await connection.getAccountInfo(vaultPda);
-        const vaultSol = (vaultInfo?.lamports ?? 0) / LAMPORTS_PER_SOL;
-        const me = publicKey
-          ? (p.members as any[]).find((m: any) => (m.wallet as PublicKey).equals(publicKey))
-          : undefined;
-        const myShareBps: number = me ? me.shareBps : 0;
-        const finalized = 'finalized' in p.status;
 
-        const mapped: ChainPact = {
-          pda,
-          projectId: p.projectId as string,
-          title: p.title as string,
-          description: p.description as string,
-          creator: p.creator as PublicKey,
-          members: (p.members as any[]).map((m) => ({
-            wallet: m.wallet as PublicKey,
-            role: m.role as string,
-            shareBps: m.shareBps as number,
-            approved: m.approved as boolean,
-          })),
-          status: finalized ? 'active' : 'pending',
-          protocolWallet: p.protocolWallet as PublicKey,
-          vaultBalanceSol: vaultSol,
-          myShareBps,
-          myClaimableSol: (vaultSol * myShareBps) / 10_000,
-        };
+        const mapped = toChainPact(pda, p, vaultInfo?.lamports ?? 0, publicKey);
 
         if (!cancelled) setPact(mapped);
       } catch (e) {
@@ -181,7 +179,7 @@ export interface TxState {
 /** Actions on-chain partagées par Dashboard et Pacts */
 export function usePactActions(refresh: () => void) {
   const program = useAnchorProgram();
-  const { publicKey } = useWallet();
+  const { publicKey, signMessage } = useWallet();
   const { t } = useLanguage();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<'distribute' | 'fund' | 'finalize' | null>(null);
@@ -217,6 +215,25 @@ export function usePactActions(refresh: () => void) {
       const sig = await fund(program, publicKey, pact.pda, lamports);
       setTxState({ kind: 'success', text: t('txMessages.fundSuccess', { amount: amountSol, title: pact.title }), sig });
       logPactEvent({ projectPda: pact.pda.toBase58(), kind: 'fund', actor: publicKey.toBase58(), amountSol, txSig: sig });
+      // Push best-effort (29/08 nuit), même principe que l'approbation
+      // dans PactCard.tsx — jamais bloquant pour le flux de financement.
+      if (signMessage) {
+        const otherWallets = pact.members
+          .map((m) => m.wallet.toBase58())
+          .filter((w) => w !== publicKey.toBase58());
+        if (otherWallets.length > 0) {
+          triggerPushNotification({
+            actorWallet: publicKey.toBase58(),
+            projectPda: pact.pda.toBase58(),
+            type: 'funding',
+            wallets: otherWallets,
+            title: pact.title,
+            body: t('pushNotif.fundBody', { amount: amountSol }),
+            url: `/#/pact/${pact.pda.toBase58()}`,
+            signMessage: (msg) => signMessage(msg),
+          }).catch(() => {});
+        }
+      }
       refresh();
     } catch (e) {
       setTxState({ kind: 'error', text: parseTxError(e) });
@@ -267,14 +284,33 @@ export function usePactActions(refresh: () => void) {
 
 // ═══════════════════════════════════════════════════════════════════
 // TRÉSORERIE — données 100% réelles, aucune valeur inventée.
-//  - TVL : solde live des vaults (1 appel RPC, exact)
-//  - Flux récents : vraies transactions on-chain (getSignaturesForAddress
-//    + getParsedTransaction), delta de solde du vault calculé directement
-//    depuis preBalances/postBalances — pas de parsing fragile d'instruction
-//  - Distribué : somme des flux négatifs (sorties de vault) trouvés dans
-//    la fenêtre récupérée. Fenêtre bornée (dernières signatures par vault)
-//    pour rester rapide — libellé honnête plutôt que "total historique"
-//    non garanti.
+//
+//  - TVL : solde live des vaults (1 appel RPC batch, exact, on-chain)
+//  - Flux récents : lus dans `pact_events` (Supabase), pas reconstruits
+//    depuis la chaîne
+//  - Distribué : somme des sorties de vault sur la fenêtre affichée
+//
+// ⚠️ CHANGEMENT MAJEUR — pourquoi on ne scanne plus la chaîne ici.
+//
+// La version précédente appelait, pour CHAQUE vault, getSignaturesForAddress
+// puis un getParsedTransaction par signature : ~90 requêtes RPC à chaque
+// ouverture de la page, pour 6 pacts. Deux murs se dressaient :
+//
+//  1. le nœud dédié refuse getProgramAccounts (-32401), donc la liste des
+//     pacts partait déjà sur le devnet public ;
+//  2. le devnet public throttlait (429) bien avant la fin de la boucle — le
+//     retry interne de web3.js lui-même s'épuisait (500ms→1s→2s→4s) avant
+//     d'abandonner.
+//
+// Ce n'était donc pas un bug de code mais un plafond d'infrastructure :
+// aucun backoff ne peut inventer de la capacité RPC. La bonne réponse
+// n'était pas d'ajouter des rustines côté client mais de supprimer le
+// besoin — `pact_events` enregistre déjà chaque fund/distribute avec son
+// montant, au moment de la transaction. Le Treasury refabriquait donc à
+// grands frais une donnée déjà stockée.
+//
+// La chaîne reste la source de vérité : chaque flux affiché porte son
+// `tx_sig`, cliquable vers l'explorer. Cette table n'est qu'un index.
 // ═══════════════════════════════════════════════════════════════════
 
 export interface TreasuryFlow {
@@ -294,17 +330,9 @@ export interface TreasurySummary {
   error: string | null;
 }
 
-const SIGS_PER_VAULT = 15; // borne le nombre d'appels RPC — largement suffisant pour la démo
 const MAX_FLOWS_SHOWN = 10;
-
-function extractInstructionLabel(logMessages: string[] | null | undefined): string {
-  if (!logMessages) return 'Transaction';
-  for (const line of logMessages) {
-    const m = line.match(/Instruction:\s*(\w+)/);
-    if (m) return m[1];
-  }
-  return 'Transaction';
-}
+/** Fenêtre lue dans pact_events : large, car on filtre ensuite les pacts cachés. */
+const EVENTS_WINDOW = 60;
 
 export function useTreasury(): TreasurySummary {
   const program = useAnchorProgram();
@@ -335,77 +363,51 @@ export function useTreasury(): TreasurySummary {
     async function load() {
       setState((s) => ({ ...s, loading: true, error: null }));
       try {
+        // ─── ① Liste des pacts + TVL live : 2 appels RPC, pas un de plus ───
         const raw = await fetchAllProjects(program);
         // Même filtre que useProjects() — sinon les pacts de test (ex: "Café")
         // remontent dans le TVL et le flux "Recent flows" du Treasury public,
         // visible par les juges (voir audit UI/UX du 24/08).
-        const projects = (raw as { publicKey: PublicKey; account: any }[])
-          .filter((r) => !HIDDEN_PACT_PDAS.has(r.publicKey.toString()));
+        const projects = filterVisiblePacts(raw, (r) => r.publicKey);
         const vaultPdas = projects.map((r) => findVaultPda(r.publicKey)[0]);
 
-        // ─── TVL réel : solde live de chaque vault ───
-        const vaultInfos = await connection.getMultipleAccountsInfo(vaultPdas);
+        // Index pda → titre, pour nommer les flux sans re-scanner quoi que ce soit.
+        const titleByPda = new Map<string, string>(
+          projects.map((r) => [r.publicKey.toBase58(), r.account.title || 'Projet'])
+        );
+
+        const vaultInfos = vaultPdas.length
+          ? await connection.getMultipleAccountsInfo(vaultPdas)
+          : [];
         const tvlLamports = vaultInfos.reduce((s, info) => s + (info?.lamports ?? 0), 0);
         const totalValueLockedSol = tvlLamports / LAMPORTS_PER_SOL;
         // 2% protocole prélevé à la distribution → 98% du TVL actuel est réclamable par les membres
         const pendingClaimsSol = totalValueLockedSol * 0.98;
 
-        if (vaultPdas.length === 0) {
-          if (!cancelled) {
-            setState({ totalValueLockedSol: 0, distributedRecentSol: 0, pendingClaimsSol: 0, flows: [], loading: false, error: null });
-          }
-          return;
-        }
+        // ─── ② Flux : une seule requête Supabase, zéro RPC ───
+        const events = await fetchMoneyEvents(EVENTS_WINDOW);
 
-        // ─── Signatures récentes par vault (bornées) ───
-        const sigLists = await Promise.all(
-          vaultPdas.map((pda) =>
-            connection.getSignaturesForAddress(pda, { limit: SIGS_PER_VAULT }).catch(() => [])
-          )
-        );
+        const flows: TreasuryFlow[] = events
+          // Un événement dont le pact n'existe plus (ou est masqué) n'a pas à
+          // remonter : le titre serait vide et le montant fausserait le total.
+          .filter((e) => titleByPda.has(e.projectPda))
+          .map((e) => {
+            const amount = e.amountSol ?? 0;
+            return {
+              signature: e.txSig,
+              label:
+                e.kind === 'fund'
+                  ? INSTRUCTION_LABELS.Fund
+                  : INSTRUCTION_LABELS.Distribute,
+              projectTitle: titleByPda.get(e.projectPda) as string,
+              // Le signe porte le sens du mouvement : un financement entre dans
+              // le vault, une distribution en sort. La table stocke un montant
+              // absolu, c'est ici qu'on l'oriente.
+              amountSol: e.kind === 'fund' ? Math.abs(amount) : -Math.abs(amount),
+              when: Math.floor(new Date(e.createdAt).getTime() / 1000),
+            };
+          });
 
-        type SigEntry = { signature: string; blockTime: number | null; projectTitle: string };
-        const entries: SigEntry[] = [];
-        sigLists.forEach((list, i) => {
-          const title = projects[i]?.account?.title ?? 'Projet';
-          list.forEach((s) => entries.push({ signature: s.signature, blockTime: s.blockTime ?? null, projectTitle: title }));
-        });
-
-        // Dédup + tri par date décroissante + on garde large pour calculer "Distribué"
-        const seen = new Set<string>();
-        const deduped = entries.filter((e) => (seen.has(e.signature) ? false : (seen.add(e.signature), true)));
-        deduped.sort((a, b) => (b.blockTime ?? 0) - (a.blockTime ?? 0));
-
-        // ─── Détail des transactions : delta de solde du vault + label ───
-        const parsed = await Promise.all(
-          deduped.map(async (e) => {
-            try {
-              const tx = await connection.getParsedTransaction(e.signature, { maxSupportedTransactionVersion: 0 });
-              if (!tx || !tx.meta) return null;
-              const keys = tx.transaction.message.accountKeys.map((k: any) => k.pubkey.toBase58());
-              // Retrouve l'index du vault concerné parmi les comptes de la tx
-              const vaultIdx = keys.findIndex((k: string) => vaultPdas.some((v) => v.toBase58() === k));
-              if (vaultIdx === -1) return null;
-              const pre = tx.meta.preBalances[vaultIdx] ?? 0;
-              const post = tx.meta.postBalances[vaultIdx] ?? 0;
-              const deltaSol = (post - pre) / LAMPORTS_PER_SOL;
-              if (deltaSol === 0) return null; // Approve/Finalize/AddMember : vault non touché, on ignore
-              const rawLabel = extractInstructionLabel(tx.meta.logMessages);
-              const flow: TreasuryFlow = {
-                signature: e.signature,
-                label: INSTRUCTION_LABELS[rawLabel] ?? rawLabel,
-                projectTitle: e.projectTitle,
-                amountSol: deltaSol,
-                when: e.blockTime,
-              };
-              return flow;
-            } catch {
-              return null;
-            }
-          })
-        );
-
-        const flows = parsed.filter((f): f is TreasuryFlow => f !== null);
         const distributedRecentSol = flows
           .filter((f) => f.amountSol < 0)
           .reduce((s, f) => s + Math.abs(f.amountSol), 0);

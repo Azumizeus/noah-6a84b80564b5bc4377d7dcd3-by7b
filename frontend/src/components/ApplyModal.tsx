@@ -19,7 +19,7 @@ interface Props {
 }
 
 export default function ApplyModal({ projectPda, projectTitle, wantedRoles, onClose }: Props) {
-  const { publicKey } = useWallet();
+  const { publicKey, signMessage } = useWallet();
   const { t } = useLanguage();
   const [roleId, setRoleId] = useState('');
   const [customRole, setCustomRole] = useState('');
@@ -56,20 +56,27 @@ export default function ApplyModal({ projectPda, projectTitle, wantedRoles, onCl
       setError(t('apply.errorRole'));
       return;
     }
+    // La candidature est désormais signée : c'est ce qui empêche de
+    // postuler au nom d'un autre builder.
+    if (!signMessage) {
+      setError("Ce wallet ne sait pas signer de message — candidature impossible.");
+      return;
+    }
     setLoading(true);
     setError(null);
-    const ok = await submitApplication({
+    const r = await submitApplication({
       projectPda,
       roleWanted,
       applicantWallet: publicKey.toBase58(),
       message: message.trim(),
+      signMessage,
     });
     setLoading(false);
-    if (ok) {
-      setSent(true);
-    } else {
-      setError(t('apply.errorSubmit'));
-    }
+    // On remonte le message exact du serveur plutôt qu'un « échec de
+    // l'envoi » générique : la cause la plus fréquente est désormais un
+    // refus de signature, que l'utilisateur a lui-même provoqué.
+    if ('error' in r) setError(r.error);
+    else setSent(true);
   };
 
   return (

@@ -1,6 +1,8 @@
 // src/lib/pacts.ts
 import type { PublicKey } from '@solana/web3.js';
 import { translate, type Lang } from './i18n/translations';
+import { utf8ByteLength } from './textSafety';
+import { CAN_UPDATE_DESCRIPTION } from './onchainLimits';
 
 /** Langue courante lue en synchrone (localStorage) — pacts.ts n'est pas un
  *  composant React et ne peut pas utiliser useLanguage(). Même clé que
@@ -58,10 +60,24 @@ export function explorerAddressUrl(address: string): string {
   return `https://explorer.solana.com/address/${address}?cluster=devnet`;
 }
 
+/**
+ * Forme partielle d'une erreur Anchor : `error.errorMessage` porte le libellé
+ * déclaré dans le programme (ex. "Project already finalized"), absent d'un
+ * Error standard. On ne décrit que ce qu'on lit réellement — le reste de
+ * l'objet (logs, codes, stack) ne nous intéresse pas ici.
+ */
+interface AnchorLikeError {
+  error?: { errorMessage?: string };
+  message?: string;
+}
+
 /** Erreur Anchor/wallet → message lisible (FR/EN selon la langue courante) */
 export function parseTxError(err: unknown): string {
-  const e = err as any;
-  const msg: string = e?.error?.errorMessage ?? e?.message ?? String(err);
+  // `err` est unknown (tout peut être throw en JS, pas seulement un Error) :
+  // on le lit à travers une forme partielle plutôt qu'en `any`, ce qui garde
+  // les accès vérifiés par le compilateur tout en tolérant les non-objets.
+  const e = (typeof err === 'object' && err !== null ? err : {}) as AnchorLikeError;
+  const msg: string = e.error?.errorMessage ?? e.message ?? String(err);
   const lang = currentLang();
   const tr = (key: string) => translate(lang, key);
   if (msg.includes('User rejected')) return tr('errors.userRejected');
@@ -124,6 +140,47 @@ export function formatAddress(address: string | undefined | null): string {
   return address.slice(0, 4) + '...' + address.slice(-4);
 }
 
-export function getVaultBalance(pact: any): number {
+export function getVaultBalance(
+  pact: Partial<Pick<ChainPact, 'vaultBalanceSol'>> | null | undefined
+): number {
   return pact?.vaultBalanceSol ?? 0;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Migration des pacts pré-upgrade
+// ═══════════════════════════════════════════════════════════════════
+
+/** Ancienne borne de description, avant l'upgrade du 27/08. */
+const LEGACY_MAX_DESC_LEN = 280;
+
+/**
+ * Faut-il proposer la migration (realloc via update_description) sur ce pact ?
+ *
+ * ⚠️ Ce test est une HEURISTIQUE, et il faut savoir pourquoi.
+ *
+ * Le seul signal fiable serait la taille allouée du compte Project on-chain
+ * (`accountInfo.data.length`), qui n'est pas remontée dans ChainPact —
+ * useProjects ne récupère que les champs décodés. Ajouter cette taille
+ * impliquerait un getMultipleAccountsInfo supplémentaire sur tous les projets
+ * à chaque chargement de la liste.
+ *
+ * À la place on raisonne par l'absurde : une description de plus de 280 octets
+ * n'a PAS pu être écrite par l'ancien programme, donc ce pact est
+ * nécessairement récent et n'a rien à migrer. En dessous, on ne peut pas
+ * trancher — on propose.
+ *
+ * Le faux positif est bénin : update_description réécrit la même chaîne, le
+ * compte est déjà à la bonne taille, la transaction passe sans rien changer.
+ * Le coût est une signature inutile, pas une corruption.
+ *
+ * Le faux négatif, lui, est impossible — c'est ce qui compte.
+ */
+export function needsDescriptionMigration(
+  pact: Pick<ChainPact, 'description' | 'creator'>,
+  wallet: PublicKey | null | undefined
+): boolean {
+  if (!CAN_UPDATE_DESCRIPTION) return false;
+  // Seul le creator peut signer update_description (relations: ["project"]).
+  if (!wallet || !pact.creator.equals(wallet)) return false;
+  return utf8ByteLength(pact.description) <= LEGACY_MAX_DESC_LEN;
 }

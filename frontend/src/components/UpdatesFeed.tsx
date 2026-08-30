@@ -28,7 +28,7 @@ interface Props {
 }
 
 export function UpdatesFeed({ projectPda, members }: Props) {
-  const { publicKey } = useWallet();
+  const { publicKey, signMessage } = useWallet();
   const { t } = useLanguage();
 
   const timeAgoIso = (iso: string): string => {
@@ -80,6 +80,13 @@ export function UpdatesFeed({ projectPda, members }: Props) {
 
   const handlePost = async () => {
     if (!myAddr) return;
+    // Une signature prouve désormais l'auteur côté serveur : sans
+    // `signMessage`, l'envoi échouerait avec un message opaque. Autant le
+    // dire clairement ici.
+    if (!signMessage) {
+      setError("Ce wallet ne sait pas signer de message — publication impossible.");
+      return;
+    }
     const bodyErr = validateUpdateBody(body);
     const linkErr = validateUpdateLink(link);
     if (bodyErr || linkErr) {
@@ -88,7 +95,7 @@ export function UpdatesFeed({ projectPda, members }: Props) {
     }
     setPosting(true);
     setError(null);
-    const r = await postProjectUpdate({ projectPda, authorWallet: myAddr, body, link });
+    const r = await postProjectUpdate({ projectPda, authorWallet: myAddr, body, link, signMessage });
     setPosting(false);
     if ('error' in r) {
       setError(r.error);

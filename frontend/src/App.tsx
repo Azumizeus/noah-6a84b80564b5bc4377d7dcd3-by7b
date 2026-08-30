@@ -10,17 +10,24 @@ import {
 import { mwaAuthCache } from './lib/mwaAuthCache';
 import { RPC_ENDPOINT } from './lib/constants';
 import { useHashRoute, usePactPdaParam } from './lib/router';
+import { useChatSessionCleanup } from './hooks/useChatSessionCleanup';
+import { useEffect } from 'react';
 import { LanguageProvider } from './lib/i18n/LanguageContext';
+import { ThemeProvider, useTheme } from './lib/ThemeContext';
+import { fetchProfile } from './lib/profileRemote';
+import SeekerNexusBadge from './components/SeekerNexusBadge';
 import DashboardPage from './pages/DashboardPage';
 import LandingPage from './pages/LandingPage';
 import PactsPage from './pages/PactsPage';
 import MarketplacePage from './pages/MarketplacePage';
-import TreasuryPage from './pages/TreasuryPage';
-import DocsPage from './pages/DocsPage';
 import AboutPage from './pages/AboutPage';
+import DocsPage from './pages/DocsPage';
 import PactPublicPage from './pages/PactPublicPage';
 import MonProfilPage from './pages/MonProfilPage';
+import TreasuryPage from './pages/TreasuryPage';
 import BuildersPage from './pages/BuildersPage';
+import NetworkPage from './pages/NetworkPage';
+import LeaderboardPage from './pages/LeaderboardPage';
 
 import '@solana/wallet-adapter-react-ui/styles.css';
 
@@ -30,6 +37,40 @@ import '@solana/wallet-adapter-react-ui/styles.css';
 function RootRoute() {
   const { connected } = useWallet();
   return connected ? <DashboardPage /> : <LandingPage />;
+}
+
+// Purge les jetons de session du chat dès que le wallet se déconnecte ou
+// change de compte. Sans rendu : il doit vivre à l'intérieur du
+// WalletProvider (il lit useWallet) et rester monté sur toutes les routes,
+// puisqu'on se déconnecte rarement depuis la page d'un chat.
+function ChatSessionCleanup() {
+  useChatSessionCleanup();
+  return null;
+}
+
+// Applique automatiquement, à la connexion d'un wallet, le thème que ce
+// builder a enregistré sur son profil (builder_profiles.theme_palette) —
+// sans ça, le choix ne suit que ce NAVIGATEUR (ThemeContext, localStorage
+// par wallet), jamais l'appareil. Lecture publique (fetchProfile), aucune
+// signature requise. Sans rendu, doit vivre sous ThemeProvider.
+function ThemePreferenceSync() {
+  const { publicKey } = useWallet();
+  const { setTheme } = useTheme();
+
+  useEffect(() => {
+    if (!publicKey) return;
+    let cancelled = false;
+    fetchProfile(publicKey.toBase58()).then((profile) => {
+      if (cancelled || !profile?.themePalette) return;
+      setTheme(profile.themePalette);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [publicKey]);
+
+  return null;
 }
 
 // ⚠️ REVERT volontaire vers SolanaMobileWalletAdapter (package legacy) après
@@ -74,32 +115,51 @@ export default function App() {
     <LanguageProvider>
       <ConnectionProvider endpoint={RPC_ENDPOINT}>
         <WalletProvider wallets={wallets} autoConnect>
+          {/* ThemeProvider DOIT être à l'intérieur du WalletProvider : il lit
+              useWallet() pour mémoriser la palette par wallet. Monté au-dessus,
+              il planterait au rendu. */}
+          <ThemeProvider>
           <WalletModalProvider>
-            {pactPda ? (
-              <PactPublicPage pda={pactPda} />
-            ) : route === '/pacts' ? (
-              <PactsPage />
-            ) : route === '/marketplace' ? (
-              <MarketplacePage />
-            ) : route === '/profile' ? (
-              <MonProfilPage />
-            ) : route === '/builders' ? (
-              <BuildersPage />
-            ) : route === '/treasury' ? (
-              <TreasuryPage />
-            ) : route === '/docs' ? (
-              <DocsPage />
-            ) : route === '/about' ? (
-              <AboutPage />
-            ) : route === '/home' ? (
-              // Page d'accueil marketing, toujours accessible via l'icône du
-              // logo — même si un wallet est connecté (contrairement à '/'
-              // qui bascule sur le Dashboard une fois connecté).
-              <LandingPage />
-            ) : (
-              <RootRoute />
-            )}
+            <ChatSessionCleanup />
+            <ThemePreferenceSync />
+            {/* key = route active : un changement de route démonte/remonte ce
+                wrapper, ce qui rejoue .page-transition-in (voir index.css).
+                Pas de logique de timing en JS — juste un remount React. */}
+            <div key={pactPda ?? route} className="page-transition-in">
+              {pactPda ? (
+                <PactPublicPage pda={pactPda} />
+              ) : route === '/pacts' ? (
+                <PactsPage />
+              ) : route === '/marketplace' ? (
+                <MarketplacePage />
+              ) : route === '/docs' ? (
+                <DocsPage />
+              ) : route === '/profile' ? (
+                <MonProfilPage />
+              ) : route === '/treasury' ? (
+                <TreasuryPage />
+              ) : route === '/builders' ? (
+                <BuildersPage />
+              ) : route === '/network' ? (
+                <NetworkPage />
+              ) : route === '/leaderboard' ? (
+                <LeaderboardPage />
+              ) : route === '/about' ? (
+                <AboutPage />
+              ) : route === '/home' ? (
+                // Page d'accueil marketing, toujours accessible via l'icône du
+                // logo — même si un wallet est connecté (contrairement à '/'
+                // qui bascule sur le Dashboard une fois connecté).
+                <LandingPage />
+              ) : (
+                <RootRoute />
+              )}
+            </div>
+            {/* Badge d'écosystème — flottant, présent sur toutes les routes,
+                à l'emplacement de l'ancien badge injecté par l'outil. */}
+            <SeekerNexusBadge />
           </WalletModalProvider>
+          </ThemeProvider>
         </WalletProvider>
       </ConnectionProvider>
     </LanguageProvider>

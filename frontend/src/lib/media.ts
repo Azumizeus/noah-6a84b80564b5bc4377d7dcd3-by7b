@@ -4,12 +4,47 @@
 // "project-media", public). Off-chain volontairement (comme role_interests
 // / pact_events) : le compte Project on-chain a déjà un budget d'octets
 // serré, stocker des images dessus serait hors de prix. Une seule ligne
-// par projet dans project_media (upsert), pas de vérification serveur de
-// signature wallet — même modèle de confiance que les autres tables MVP.
-// Voir supabase/project_media.sql pour le schéma.
+// par projet dans project_media (upsert).
+//
+// ⚠️ SÉCURITÉ — migration 20260828180000. project_media portait à la fois
+// une policy INSERT et une policy UPDATE publiques : n'importe qui pouvait
+// remplacer le logo, la bannière et la présentation de N'IMPORTE quel
+// projet. C'était le trou le plus visible du produit — un défacement de
+// fiche publique en une requête curl. L'écriture passe désormais par l'Edge
+// Function `project-write`, qui exige une signature ET vérifie on-chain que
+// le signataire est bien le founder du projet.
+//
+// ⚠️ Réparé le 28/08 — migration 20260828190000 avait fermé les policies
+// INSERT/UPDATE publiques sur storage.objects (n'importe qui pouvait
+// écraser l'objet `<pda>/logo.png` d'un tiers, chemin déterministe + clé
+// anon). `uploadMediaFile` ne parle donc plus jamais en écriture directe au
+// bucket : elle demande d'abord une URL d'upload SIGNÉE à l'Edge Function
+// `project-write` (action "media-upload-url", même modèle que
+// `vault`/upload-url), qui vérifie la signature PUIS l'autorisation avant
+// de l'émettre — le fichier ne transite jamais par la fonction elle-même.
+//
+// Deux cas d'autorisation gérés côté serveur (voir project-write) :
+//   1. Le projet existe déjà on-chain (EditMediaModal) → le signataire doit
+//      être project.creator, lu on-chain.
+//   2. Le projet n'existe pas ENCORE (upload pendant CreatePactWizard,
+//      juste après createProject) → le serveur redérive le PDA depuis
+//      (wallet, projectId) fourni en paramètre et vérifie qu'il correspond.
+//      D'où le paramètre `projectId` optionnel de `uploadMediaFile`,
+//      OBLIGATOIRE dans ce second cas.
+//
+// La signature est réutilisée telle quelle pour l'appel "media" qui suit
+// (enregistrement des URLs) — un seul popup wallet pour tout le flux
+// (upload logo + upload bannière + enregistrement), comme avant la
+// fermeture du bucket.
 // ═══════════════════════════════════════════════════════════════════
 import { supabase, isRemoteEnabled } from './supabaseClient';
 import { translate, type Lang } from './i18n/translations';
+import {
+  buildMediaSignMessage,
+  callProjectWrite,
+  signForProjectWrite,
+  type SignMessageFn,
+} from './projectWrite';
 
 export { isRemoteEnabled as mediaEnabled };
 
@@ -22,6 +57,7 @@ function currentLang(): Lang {
   }
   return 'fr';
 }
+
 function tr(key: string, params?: Record<string, string | number>): string {
   return translate(currentLang(), key, params);
 }
@@ -58,51 +94,145 @@ function extFromFile(file: File): string {
 }
 
 /**
- * Upload un logo ou une bannière pour un projet (chemin déterministe
- * `<projectPda>/<kind>.<ext>`, upsert — un ré-upload remplace l'ancien),
- * puis enregistre l'URL publique dans project_media.
+ * Demande une URL d'upload signée à l'Edge Function pour CE chemin précis
+ * (`<projectPda>/<kind>.<ext>`), sur la base d'une signature déjà obtenue
+ * par l'appelant (réutilisée telle quelle — voir en-tête de fichier).
  */
-export async function uploadProjectMedia(
+async function requestMediaUploadUrl(
+  projectPda: string,
+  kind: 'logo' | 'banner',
+  file: File,
+  signed: { message: string; signature: number[] },
+  projectId?: string
+): Promise<{ path: string; token: string } | { error: string }> {
+  const r = await callProjectWrite({
+    action: 'media-upload-url',
+    projectPda,
+    message: signed.message,
+    signature: signed.signature,
+    kind,
+    mimeType: file.type || 'application/octet-stream',
+    sizeBytes: file.size,
+    ...(projectId ? { projectId } : {}),
+  });
+
+  if ('error' in r) return { error: r.error };
+
+  const path = (r as { data?: Record<string, unknown> }).data?.path;
+  const token = (r as { data?: Record<string, unknown> }).data?.token;
+  if (typeof path !== 'string' || typeof token !== 'string') {
+    return { error: tr('errors.uploadFailed') };
+  }
+  return { path, token };
+}
+
+/**
+ * Upload un logo ou une bannière pour un projet (chemin déterministe
+ * `<projectPda>/<kind>.<ext>`, upsert — un ré-upload remplace l'ancien).
+ * N'écrit rien dans `project_media` — voir `saveProjectMedia` pour ça.
+ *
+ * `signed` est le couple {message, signature} déjà obtenu par l'appelant
+ * (une seule signature wallet sert à tous les fichiers ET à l'appel
+ * `saveProjectMedia` qui suit — voir en-tête de fichier).
+ *
+ * `projectId` est OBLIGATOIRE si le projet vient tout juste d'être créé et
+ * n'est pas encore garanti visible du RPC (cas CreatePactWizard) : le
+ * serveur ne peut pas encore lire `project.creator` on-chain, et redérive
+ * le PDA à partir de (wallet, projectId) à la place. Omissible pour un
+ * projet déjà existant (EditMediaModal), où la lecture on-chain suffit.
+ */
+export async function uploadMediaFile(
   projectPda: string,
   file: File,
-  kind: 'logo' | 'banner'
+  kind: 'logo' | 'banner',
+  signed: { message: string; signature: number[] },
+  projectId?: string
 ): Promise<{ url: string } | { error: string }> {
   if (!supabase) return { error: tr('errors.notConfigured') };
 
   const invalid = validateMediaFile(file, kind);
   if (invalid) return { error: invalid };
 
-  const path = `${projectPda}/${kind}.${extFromFile(file)}`;
+  const prep = await requestMediaUploadUrl(projectPda, kind, file, signed, projectId);
+  if ('error' in prep) return prep;
 
   const { error: uploadError } = await supabase.storage
     .from(BUCKET)
-    .upload(path, file, { upsert: true, cacheControl: '3600' });
+    .uploadToSignedUrl(prep.path, prep.token, file);
 
   if (uploadError) {
     console.warn('[media] upload error:', uploadError.message);
     return { error: tr('errors.uploadFailed') };
   }
 
+  const path = `${projectPda}/${kind}.${extFromFile(file)}`;
   const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
   // Cache-bust : le chemin est déterministe (même URL si on remplace le
   // fichier), on ajoute un ?t= pour forcer le navigateur à recharger la
   // nouvelle image plutôt que de servir l'ancienne depuis son cache.
-  const url = `${data.publicUrl}?t=${Date.now()}`;
+  return { url: `${data.publicUrl}?t=${Date.now()}` };
+}
 
-  const column = kind === 'logo' ? 'logo_url' : 'banner_url';
-  const { error: upsertError } = await supabase
-    .from('project_media')
-    .upsert(
-      { project_pda: projectPda, [column]: url, updated_at: new Date().toISOString() },
-      { onConflict: 'project_pda' }
-    );
+/** Champs modifiables de project_media. Un champ absent reste inchangé ;
+ *  une chaîne vide efface la valeur côté serveur. */
+export interface ProjectMediaPatch {
+  logoUrl?: string;
+  bannerUrl?: string;
+  pitchVideoUrl?: string;
+  aboutText?: string;
+  aboutTextEn?: string;
+}
 
-  if (upsertError) {
-    console.warn('[media] db upsert error:', upsertError.message);
-    return { error: tr('errors.uploadSavedFailed') };
+/**
+ * Écrit un lot de champs en UNE signature. Founder-only (vérifié on-chain
+ * par l'Edge Function, pas ici — un contrôle côté client ne protège rien).
+ *
+ * `presigned`, s'il est fourni, réutilise une signature déjà obtenue (par
+ * exemple pour les appels `uploadMediaFile` qui ont précédé) au lieu d'en
+ * redemander une — c'est ce qui garde le flux logo+bannière+enregistrement
+ * à UN SEUL popup wallet plutôt que trois.
+ */
+export async function saveProjectMedia(
+  projectPda: string,
+  patch: ProjectMediaPatch,
+  auth: { wallet: string; signMessage: SignMessageFn },
+  presigned?: { message: string; signature: number[] }
+): Promise<{ ok: true } | { error: string }> {
+  if (!isRemoteEnabled) return { error: tr('errors.notConfigured') };
+  if (Object.keys(patch).length === 0) return { ok: true };
+
+  const signed =
+    presigned ??
+    (await signForProjectWrite(
+      auth.signMessage,
+      buildMediaSignMessage(auth.wallet, projectPda, Date.now())
+    ));
+  if ('error' in signed) return { error: signed.error };
+
+  const r = await callProjectWrite({
+    action: 'media',
+    projectPda,
+    message: signed.message,
+    signature: signed.signature,
+    ...patch,
+  });
+
+  if ('error' in r) {
+    console.warn('[media] enregistrement refusé:', r.error);
+    return { error: r.error };
   }
+  return { ok: true };
+}
 
-  return { url };
+/** Signe une fois le message "médias du projet", réutilisable pour
+ *  `uploadMediaFile` (plusieurs fois) puis `saveProjectMedia` — voir
+ *  en-tête de fichier pour pourquoi cette réutilisation est sûre. */
+export async function signMediaWrite(
+  wallet: string,
+  projectPda: string,
+  signMessage: SignMessageFn
+): Promise<{ message: string; signature: number[] } | { error: string }> {
+  return signForProjectWrite(signMessage, buildMediaSignMessage(wallet, projectPda, Date.now()));
 }
 
 function fromRemote(row: Record<string, unknown>): ProjectMedia {
@@ -182,26 +312,31 @@ export function toEmbedUrl(url: string): string | null {
 /** Enregistre (ou efface, si url vide) le lien vidéo de présentation d'un projet. */
 export async function setProjectVideo(
   projectPda: string,
-  url: string
+  url: string,
+  auth: { wallet: string; signMessage: SignMessageFn }
 ): Promise<{ ok: true } | { error: string }> {
-  if (!supabase) return { error: tr('errors.notConfigured') };
+  if (!isRemoteEnabled) return { error: tr('errors.notConfigured') };
   const invalid = validateVideoUrl(url);
   if (invalid) return { error: invalid };
 
-  const { error } = await supabase
-    .from('project_media')
-    .upsert(
-      {
-        project_pda: projectPda,
-        pitch_video_url: url.trim() || null,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'project_pda' }
-    );
+  const signed = await signForProjectWrite(
+    auth.signMessage,
+    buildMediaSignMessage(auth.wallet, projectPda, Date.now())
+  );
+  if ('error' in signed) return { error: signed.error };
 
-  if (error) {
-    console.warn('[media] video upsert error:', error.message);
-    return { error: tr('errors.videoSaveFailed') };
+  const r = await callProjectWrite({
+    action: 'media',
+    projectPda,
+    message: signed.message,
+    signature: signed.signature,
+    // Chaîne vide = effacement explicite côté serveur (retirer une vidéo).
+    pitchVideoUrl: url.trim(),
+  });
+
+  if ('error' in r) {
+    console.warn('[media] video refusée:', r.error);
+    return { error: r.error };
   }
   return { ok: true };
 }
@@ -232,29 +367,33 @@ export function validateAboutText(text: string): string | null {
 export async function setProjectAbout(
   projectPda: string,
   textFr: string,
-  textEn: string
+  textEn: string,
+  auth: { wallet: string; signMessage: SignMessageFn }
 ): Promise<{ ok: true } | { error: string }> {
-  if (!supabase) return { error: tr('errors.notConfigured') };
+  if (!isRemoteEnabled) return { error: tr('errors.notConfigured') };
   const invalidFr = validateAboutText(textFr);
   if (invalidFr) return { error: invalidFr };
   const invalidEn = validateAboutText(textEn);
   if (invalidEn) return { error: invalidEn };
 
-  const { error } = await supabase
-    .from('project_media')
-    .upsert(
-      {
-        project_pda: projectPda,
-        about_text: textFr.trim() || null,
-        about_text_en: textEn.trim() || null,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'project_pda' }
-    );
+  const signed = await signForProjectWrite(
+    auth.signMessage,
+    buildMediaSignMessage(auth.wallet, projectPda, Date.now())
+  );
+  if ('error' in signed) return { error: signed.error };
 
-  if (error) {
-    console.warn('[media] about upsert error:', error.message);
-    return { error: 'Erreur lors de la sauvegarde du texte.' };
+  const r = await callProjectWrite({
+    action: 'media',
+    projectPda,
+    message: signed.message,
+    signature: signed.signature,
+    aboutText: textFr.trim(),
+    aboutTextEn: textEn.trim(),
+  });
+
+  if ('error' in r) {
+    console.warn('[media] about refusé:', r.error);
+    return { error: r.error };
   }
   return { ok: true };
 }

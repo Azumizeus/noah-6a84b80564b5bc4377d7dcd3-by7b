@@ -2,12 +2,11 @@
 // ═══════════════════════════════════════════════════════════════════
 // Génération de QR code 100% locale, sans appel réseau — fiabilité
 // démo garantie (pas de dépendance à une API externe pendant le pitch).
-// Utilise la lib vendorée `vendor/qrcode-generator.js` (Kazuhiko Arase,
-// MIT, aucune dépendance) plutôt qu'un package npm : évite de toucher
-// package.json/package-lock.json dans le workflow copier-coller GitHub.
+// Utilise `qrcode-generator` (Kazuhiko Arase, MIT, aucune dépendance).
+// NOTE: à l'origine cette lib était vendorée dans `vendor/qrcode-generator.js`;
+// ici on consomme le package npm équivalent — API identique.
 // ═══════════════════════════════════════════════════════════════════
-// @ts-ignore — fichier JS vendoré, pas de types (voir allowJs dans tsconfig.json)
-import qrcodeFactory from './vendor/qrcode-generator.js';
+import qrcodeFactory from 'qrcode-generator';
 
 /**
  * Génère le SVG (chaîne `<svg>...</svg>`) d'un QR code encodant `text`.

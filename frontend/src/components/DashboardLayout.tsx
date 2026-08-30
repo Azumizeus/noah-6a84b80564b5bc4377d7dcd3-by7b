@@ -3,7 +3,13 @@ import { motion, MotionConfig, useReducedMotion, type Variants } from 'framer-mo
 import { useEffect, useState, type ReactNode } from 'react';
 import { useHashRoute } from '../lib/router';
 import { useLanguage } from '../lib/i18n/LanguageContext';
+import { useTheme } from '../lib/ThemeContext';
 import LanguageSwitch from './LanguageSwitch';
+import ThemeSwitch from './ThemeSwitch';
+// Module autonome, débranchable sans rien casser ailleurs — voir son
+// en-tête et lib/assistant.ts. Se rend en no-op tant que
+// VITE_ASSISTANT_ENABLED n'est pas activé.
+import AssistantChat from './AssistantChat';
 
 interface NavLink {
   label: string;
@@ -24,6 +30,8 @@ function buildDefaultLinks(t: (key: string) => string): NavLink[] {
     { label: t('nav.marketplace'), href: '#/marketplace' },
     { label: t('nav.pacts'), href: '#/pacts' },
     { label: t('nav.builders'), href: '#/builders' },
+    { label: t('nav.network'), href: '#/network' },
+    { label: t('nav.leaderboard'), href: '#/leaderboard' },
     { label: t('nav.profile'), href: '#/profile' },
     { label: t('nav.treasury'), href: '#/treasury' },
     { label: t('nav.docs'), href: '#/docs' },
@@ -66,6 +74,12 @@ export function DashboardLayout({
   const prefersReduced = useReducedMotion();
   const route = useHashRoute();
   const { t } = useLanguage();
+  // 29/08 (jour suivant) : l'aperçu (ProfileSettingsModal → BackgroundSwitch)
+  // ne se voit plus sur la vraie page — seulement dans MockupPreviewFrame,
+  // cadre contenu dans la modale de réglages. Avant, un clic pendant qu'on
+  // navigue d'autres réglages changeait déjà le fond réel derrière la
+  // modale ; ce n'est plus le cas. Voir ThemeContext.tsx.
+  const { background } = useTheme();
   const linksWithActive = (navLinks ?? buildDefaultLinks(t)).map((l) => ({ ...l, active: l.href === `#${route}` }));
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -88,30 +102,110 @@ export function DashboardLayout({
   return (
     <MotionConfig reducedMotion="user">
       <div className="relative min-h-screen overflow-x-hidden bg-canvas">
-        {/* Grille décorative */}
-        <div aria-hidden="true" className="pointer-events-none fixed inset-0 grid-bg opacity-70" />
+        {/* Décor de fond — 5 styles au choix dans les paramètres (⚙️), voir
+            lib/theme.ts (BackgroundStyle) et BackgroundSwitch.tsx. 'orbs'
+            reste le défaut historique, pixel-identique à avant l'ajout du
+            réglage. 'solid' ne rend rien ici : le bg-canvas déjà posé sur
+            le conteneur racine suffit. */}
+        {background === 'orbs' && (
+          <>
+            <div aria-hidden="true" className="pointer-events-none fixed inset-0 grid-bg opacity-70" />
+            {/* Orbes flottants — 100% CSS radial-gradient, aucune image externe.
+                Elles lisent les variables de thème : laissées en rgba() en dur,
+                elles auraient continué à baigner la page de violet sous une
+                palette dorée ou cobalt. */}
+            <div aria-hidden="true" className="pointer-events-none fixed inset-0 overflow-hidden">
+              <div
+                className="absolute -top-40 -left-32 h-[600px] w-[600px] rounded-full opacity-45 blur-3xl animate-float"
+                style={{
+                  background:
+                    'radial-gradient(circle, rgb(var(--accent-violet-rgb) / 0.45), transparent 70%)',
+                }}
+              />
+              <div
+                className="absolute top-1/3 -right-40 h-[560px] w-[560px] rounded-full opacity-40 blur-3xl animate-float"
+                style={{
+                  background:
+                    'radial-gradient(circle, rgb(var(--accent-neon-rgb) / 0.35), transparent 70%)',
+                  animationDelay: '2s',
+                }}
+              />
+              <div
+                className="absolute bottom-0 left-1/3 h-[480px] w-[480px] rounded-full opacity-32 blur-3xl animate-float"
+                style={{
+                  background:
+                    'radial-gradient(circle, rgb(var(--accent-gold-rgb) / 0.25), transparent 70%)',
+                  animationDelay: '4s',
+                }}
+              />
+              {/* 4e orbe — centre bas, pour percer les grilles longues (Marketplace/Pacts)
+                  qui scrollent bien au-delà des 3 orbes du haut. Les orbes sont `fixed`
+                  donc déjà présentes à tout scroll, mais une seule zone couverte au départ
+                  laissait les grilles denses complètement plates plus bas. */}
+              <div
+                className="absolute bottom-1/4 right-1/4 h-[420px] w-[420px] rounded-full opacity-30 blur-3xl animate-float"
+                style={{
+                  background:
+                    'radial-gradient(circle, rgb(var(--accent-violet-rgb) / 0.35), transparent 70%)',
+                  animationDelay: '6s',
+                }}
+              />
+            </div>
+          </>
+        )}
 
-        {/* Orbes flottants — 100% CSS radial-gradient, aucune image externe */}
-        <div aria-hidden="true" className="pointer-events-none fixed inset-0 overflow-hidden">
+        {background === 'grid' && (
+          <div aria-hidden="true" className="pointer-events-none fixed inset-0 grid-bg opacity-70" />
+        )}
+
+        {background === 'aurora' && (
+          <>
+            <div aria-hidden="true" className="pointer-events-none fixed inset-0 grid-bg opacity-40" />
+            <div aria-hidden="true" className="pointer-events-none fixed inset-0 overflow-hidden">
+              <div className="bg-aurora-sweep" />
+            </div>
+          </>
+        )}
+
+        {background === 'scanlines' && (
+          <div aria-hidden="true" className="pointer-events-none fixed inset-0 overflow-hidden">
+            <div className="bg-scanlines" />
+          </div>
+        )}
+
+        {/* Variantes "HD" (30/08) — images statiques (public/backgrounds/),
+            pas de CSS procédural. Chacune couvre tout le viewport, fixe
+            (ne scrolle pas avec le contenu, comme les orbes), assombrie par
+            un voile pour garder le texte lisible par-dessus (voir note
+            contraste dans buildpact_bubble_transitions_tooltip_revert). */}
+        {background === 'nebula_hd' && (
           <div
-            className="absolute -top-40 -left-32 h-[520px] w-[520px] rounded-full opacity-30 blur-3xl animate-float"
-            style={{ background: 'radial-gradient(circle, rgba(153,69,255,0.45), transparent 70%)' }}
-          />
+            aria-hidden="true"
+            className="pointer-events-none fixed inset-0 bg-cover bg-center"
+            style={{ backgroundImage: "url('/backgrounds/nebula-hd.jpg')" }}
+          >
+            <div className="absolute inset-0 bg-canvas-900/55" />
+          </div>
+        )}
+        {background === 'grid_hd' && (
           <div
-            className="absolute top-1/3 -right-40 h-[480px] w-[480px] rounded-full opacity-25 blur-3xl animate-float"
-            style={{
-              background: 'radial-gradient(circle, rgba(20,241,149,0.35), transparent 70%)',
-              animationDelay: '2s',
-            }}
-          />
+            aria-hidden="true"
+            className="pointer-events-none fixed inset-0 bg-cover bg-center"
+            style={{ backgroundImage: "url('/backgrounds/grid-hd.jpg')" }}
+          >
+            <div className="absolute inset-0 bg-canvas-900/55" />
+          </div>
+        )}
+        {background === 'aurora_hd' && (
           <div
-            className="absolute bottom-0 left-1/3 h-[420px] w-[420px] rounded-full opacity-20 blur-3xl animate-float"
-            style={{
-              background: 'radial-gradient(circle, rgba(255,215,0,0.25), transparent 70%)',
-              animationDelay: '4s',
-            }}
-          />
-        </div>
+            aria-hidden="true"
+            className="pointer-events-none fixed inset-0 bg-cover bg-center"
+            style={{ backgroundImage: "url('/backgrounds/aurora-hd.jpg')" }}
+          >
+            <div className="absolute inset-0 bg-canvas-900/55" />
+          </div>
+        )}
+        {/* background === 'solid' : rien à ajouter ici. */}
 
         {/* Skip link pour clavier / screen reader */}
         <a
@@ -153,7 +247,10 @@ export function DashboardLayout({
                       className={
                         'inline-flex h-11 items-center rounded-lg px-3 text-sm transition-colors ' +
                         (l.active
-                          ? 'bg-violet-500/10 text-white'
+                          // accent-violet, pas violet-500 : la palette native
+                          // de Tailwind ne suit pas le thème et l'onglet actif
+                          // serait resté violet sous une autre palette.
+                          ? 'bg-accent-violet/10 text-white'
                           : 'text-ink-300 hover:text-white hover:bg-white/[0.03]')
                       }
                     >
@@ -165,6 +262,7 @@ export function DashboardLayout({
             </nav>
 
             <div className="flex items-center gap-2">
+              <span className="hidden lg:block"><ThemeSwitch compact /></span>
               <span className="hidden sm:block"><LanguageSwitch compact /></span>
               {walletSlot}
 
@@ -210,7 +308,7 @@ export function DashboardLayout({
                       className={
                         'flex h-12 items-center rounded-lg px-4 text-base font-medium transition-colors ' +
                         (l.active
-                          ? 'bg-violet-500/15 text-white'
+                          ? 'bg-accent-violet/15 text-white'
                           : 'text-ink-300 hover:text-white hover:bg-white/[0.04]')
                       }
                     >
@@ -220,6 +318,11 @@ export function DashboardLayout({
                 ))}
                 <li className="px-2 pt-1 sm:hidden">
                   <LanguageSwitch />
+                </li>
+                {/* Le sélecteur de palette n'apparaît qu'à partir de lg dans
+                    l'en-tête : en dessous, c'est ici qu'on le retrouve. */}
+                <li className="px-2 pt-2 lg:hidden">
+                  <ThemeSwitch />
                 </li>
               </motion.ul>
             </nav>
@@ -234,7 +337,7 @@ export function DashboardLayout({
             {children}
           </motion.main>
 
-          <footer className="border-t border-violet-500/10 py-6 text-xs text-ink-400">
+          <footer className="border-t border-accent-violet/10 py-6 text-xs text-ink-400">
             <div className="flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center">
               <p>© {new Date().getFullYear()} {t('footer.protocol')}</p>
               <p className="font-mono">
@@ -245,6 +348,8 @@ export function DashboardLayout({
           </footer>
         </div>
       </div>
+
+      <AssistantChat />
     </MotionConfig>
   );
 }

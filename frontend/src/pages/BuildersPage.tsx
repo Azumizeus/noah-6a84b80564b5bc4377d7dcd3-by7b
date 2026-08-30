@@ -153,11 +153,18 @@ export default function BuildersPage() {
           {visible.map((p) => (
             <FadeInUp key={p.wallet}>
               <article className="glass-panel flex h-full flex-col rounded-2xl border border-white/5 p-5 transition-all hover:border-accent-violet/20">
-                <button
-                  type="button"
+                <div
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setDetailTarget(p)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setDetailTarget(p);
+                    }
+                  }}
                   aria-label={t('builders.viewProfile')}
-                  className="mb-3 flex items-center gap-3 rounded-xl text-left transition hover:opacity-80"
+                  className="mb-3 flex cursor-pointer items-center gap-3 rounded-xl text-left transition hover:opacity-80"
                 >
                   <div className="h-12 w-12 shrink-0 overflow-hidden rounded-full border border-white/10 bg-black/30">
                     {p.avatarUrl ? (
@@ -177,7 +184,7 @@ export default function BuildersPage() {
                       <StarRating value={ratings.get(p.wallet)?.avgStars ?? 0} count={ratings.get(p.wallet)?.ratingCount ?? 0} />
                     </div>
                   </div>
-                </button>
+                </div>
 
                 {p.bio && (
                   <p className="mb-3 flex-1 text-xs leading-relaxed text-ink-300">

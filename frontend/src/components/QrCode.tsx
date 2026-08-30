@@ -1,28 +1,52 @@
 // src/components/QrCode.tsx
+//
+// Rendu d'un QR code en SVG, généré localement (aucun appel réseau).
+//
+// Ce composant était importé par PactStep3 mais n'existait pas dans le
+// projet — c'est ce qui faisait planter le chargement de l'application
+// entière : Vite ne résout pas `../QrCode`, l'erreur remonte au module
+// racine et rien ne s'affiche.
+//
+// La génération elle-même vit dans lib/qr.ts (qrcode-generator, MIT).
+// Ici on ne fait qu'injecter le SVG produit et le contraindre à la taille
+// demandée.
+
 import { useMemo } from 'react';
 import { generateQrSvg } from '../lib/qr';
 
 interface Props {
-  /** Texte/URL encodé dans le QR code */
+  /** Contenu encodé — typiquement l'URL publique du pact. */
   value: string;
-  /** Taille d'affichage en px (le SVG est scalable, une seule dimension suffit) */
+  /** Côté du carré, en pixels. */
   size?: number;
-  className?: string;
 }
 
-/** QR code généré 100% côté client, sans appel réseau. */
-export function QrCode({ value, size = 160, className }: Props) {
-  const svg = useMemo(() => generateQrSvg(value), [value]);
+export default function QrCode({ value, size = 96 }: Props) {
+  // generateQrSvg est purement calculatoire mais non trivial (matrice +
+  // correction d'erreur). On le mémoïse : PactStep3 se re-rend à chaque
+  // frappe dans le formulaire, et l'URL, elle, ne change pas.
+  const svg = useMemo(() => {
+    if (!value) return '';
+    try {
+      return generateQrSvg(value);
+    } catch {
+      // Un QR peut échouer si le texte dépasse la capacité maximale du
+      // format. Mieux vaut un trou dans l'UI qu'un écran blanc.
+      return '';
+    }
+  }, [value]);
+
+  if (!svg) return null;
+
   return (
     <div
-      className={className}
       style={{ width: size, height: size }}
-      role="img"
-      aria-label={`QR code vers ${value}`}
-      // SVG généré localement à partir d'un texte qu'on contrôle (URL du pact) — pas d'entrée utilisateur libre
+      // Le SVG est produit en local à partir d'une valeur applicative
+      // (une URL construite par nos soins), pas d'une saisie tierce —
+      // il n'y a pas de surface d'injection ici.
       dangerouslySetInnerHTML={{ __html: svg }}
+      aria-label="QR code"
+      role="img"
     />
   );
 }
-
-export default QrCode;

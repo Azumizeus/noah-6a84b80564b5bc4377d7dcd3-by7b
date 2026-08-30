@@ -1,10 +1,18 @@
 // src/components/ChatBox.tsx
 // ═══════════════════════════════════════════════════════════════════
-// Chat simple par projet — lecture + Realtime, écriture ouverte à tout
-// wallet connecté (n'importe qui peut lire/écrire, pas juste les membres :
-// un backer/curieux doit pouvoir poser une question avant même de rejoindre).
+// Chat simple par projet — lecture + Realtime publics, écriture ouverte à
+// tout wallet connecté (pas seulement les membres : un backer ou un curieux
+// doit pouvoir poser une question avant même de rejoindre).
+//
+// Envoi et suppression passent par l'Edge Function `chat-moderate` et
+// exigent une signature du wallet — c'est la seule façon de garantir que
+// `author_wallet` correspond réellement à l'expéditeur.
+//
+// L'envoi s'appuie sur un jeton de session signé UNE fois pour 24 h : un
+// seul popup au premier message, puis plus rien. La suppression, elle,
+// redemande une signature à chaque fois (acte rare et destructif).
 // ═══════════════════════════════════════════════════════════════════
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { formatAddress } from '../lib/pacts';
 import { useLanguage } from '../lib/i18n/LanguageContext';
@@ -15,10 +23,12 @@ import {
   deleteChatMessage,
   fetchChatMessages,
   postChatMessage,
+  revokeChatSessions,
   subscribeToChatMessages,
   validateChatBody,
   type ChatMessage,
 } from '../lib/chat';
+import { CHAT_SESSION_TTL_HOURS, chatSessionExpiresAt } from '../lib/chatSession';
 
 interface Props {
   projectPda: string;
@@ -28,7 +38,7 @@ interface Props {
 }
 
 export function ChatBox({ projectPda, creatorWallet }: Props) {
-  const { publicKey, connected } = useWallet();
+  const { publicKey, connected, signMessage } = useWallet();
   const { t, lang } = useLanguage();
   const isCreator = !!publicKey && !!creatorWallet && publicKey.toBase58() === creatorWallet;
   const [deletingId, setDeletingId] = useState<number | null>(null);
@@ -43,6 +53,13 @@ export function ChatBox({ projectPda, creatorWallet }: Props) {
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Échéance de la session de chat en cours, ou null s'il n'y en a pas.
+  // Purement informatif : ça prévient qu'un popup wallet va s'ouvrir (ou
+  // pas). Ce n'est PAS un gate de sécurité — c'est le serveur qui valide
+  // la session, le client peut se tromper sans conséquence.
+  const [sessionExpiresAt, setSessionExpiresAt] = useState<Date | null>(null);
+  const [revoking, setRevoking] = useState(false);
+  const needsSignature = !!publicKey && sessionExpiresAt === null;
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -61,6 +78,23 @@ export function ChatBox({ projectPda, creatorWallet }: Props) {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [messages]);
 
+  const refreshSession = useCallback(() => {
+    const next = publicKey ? chatSessionExpiresAt(projectPda, publicKey.toBase58()) : null;
+    // On compare les timestamps : `chatSessionExpiresAt` renvoie un objet
+    // Date neuf à chaque appel, le stocker tel quel provoquerait un
+    // re-render inutile à chaque tick.
+    setSessionExpiresAt((prev) => (prev?.getTime() === next?.getTime() ? prev : next));
+  }, [projectPda, publicKey]);
+
+  // Re-vérifié chaque minute : sans ça, un onglet laissé ouvert continuerait
+  // d'afficher « session active » après l'expiration, et l'utilisateur
+  // recevrait un popup wallet sans avertissement au message suivant.
+  useEffect(() => {
+    refreshSession();
+    const id = window.setInterval(refreshSession, 60_000);
+    return () => window.clearInterval(id);
+  }, [refreshSession]);
+
   // Résout pseudo + avatar des auteurs — affichage plus lisible qu'une
   // adresse wallet tronquée pour tout le monde. Best-effort : si Supabase
   // n'a pas de profil pour un wallet, on retombe sur l'adresse (voir displayName()).
@@ -70,6 +104,53 @@ export function ChatBox({ projectPda, creatorWallet }: Props) {
     fetchProfilesByWallets(wallets).then(setProfiles);
   }, [messages]);
 
+  /** Échéance compacte : heure seule si c'est aujourd'hui, jour + heure sinon. */
+  const sessionLabel = (d: Date): string => {
+    const locale = lang === 'fr' ? 'fr-FR' : 'en-US';
+    const sameDay = d.toDateString() === new Date().toDateString();
+    return sameDay
+      ? d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
+      : d.toLocaleString(locale, { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+  };
+
+  /**
+   * Révocation SERVEUR des sessions de chat du wallet.
+   *
+   * Le serveur enregistre un cutoff daté et refuse ensuite tout jeton signé
+   * avant : un jeton déjà exfiltré cesse de fonctionner. L'ancien comportement
+   * (effacer le localStorage) ne retirait que la copie de CE navigateur et
+   * donnait une fausse impression de déconnexion.
+   *
+   * Deux points que l'UI doit assumer explicitement :
+   *  • un popup de signature s'ouvre — c'est ce qui empêche un tiers de
+   *    révoquer les sessions d'autrui ;
+   *  • la portée est TOUS LES PROJETS, pas seulement ce chat. D'où la
+   *    confirmation : le libellé est affiché sous un chat précis, l'effet
+   *    est plus large que ce que le contexte laisse croire.
+   */
+  const handleRevokeSession = async () => {
+    if (!publicKey) return;
+    if (!signMessage) {
+      setError(lang === 'en'
+        ? 'This wallet cannot sign messages — revocation unavailable.'
+        : 'Ce wallet ne peut pas signer de message — révocation indisponible.');
+      return;
+    }
+    const confirmed = window.confirm(lang === 'en'
+      ? 'Revoke your chat sessions on every device, for all projects? A wallet signature is required.'
+      : 'Révoquer tes sessions de chat sur tous les appareils et tous les projets ? Une signature du wallet est requise.');
+    if (!confirmed) return;
+
+    setRevoking(true);
+    setError(null);
+    const r = await revokeChatSessions({ wallet: publicKey.toBase58(), signMessage });
+    setRevoking(false);
+    // Le cache local est vidé par revokeChatSessions dans tous les cas :
+    // on rafraîchit l'indicateur avant même de traiter l'erreur.
+    refreshSession();
+    if ('error' in r) setError(r.error);
+  };
+
   const displayName = (wallet: string): string => profiles.get(wallet)?.pseudo?.trim() || formatAddress(wallet);
   const avatarUrl = (wallet: string): string | null => profiles.get(wallet)?.avatarUrl ?? null;
 
@@ -77,21 +158,56 @@ export function ChatBox({ projectPda, creatorWallet }: Props) {
 
   const handleSend = async () => {
     if (!publicKey) return;
+    if (!signMessage) {
+      setError(lang === 'en'
+        ? 'This wallet cannot sign messages — sending unavailable.'
+        : 'Ce wallet ne peut pas signer de message — envoi indisponible.');
+      return;
+    }
     const invalid = validateChatBody(body);
     if (invalid) { setError(invalid); return; }
     if (!body.trim()) return;
     setSending(true);
     setError(null);
-    const r = await postChatMessage({ projectPda, authorWallet: publicKey.toBase58(), body });
+    const r = await postChatMessage({
+      projectPda,
+      authorWallet: publicKey.toBase58(),
+      body,
+      signMessage,
+    });
     setSending(false);
+    refreshSession();
     if ('error' in r) { setError(r.error); return; }
+    // Affichage immédiat : le Realtime renverra la même ligne, la garde
+    // `some(x => x.id === m.id)` de l'abonnement évite le doublon.
+    if (r.message) {
+      const created = r.message;
+      setMessages((prev) => (prev.some((x) => x.id === created.id) ? prev : [...prev, created]));
+    }
     setBody('');
   };
 
+  // La suppression exige maintenant une signature : le serveur relit
+  // project.creator on-chain pour valider que l'appelant est bien le
+  // founder. Le bouton caché ne suffisait pas — la policy DELETE était
+  // ouverte à tous.
   const handleDelete = async (id: number) => {
+    if (!publicKey) return;
+    if (!signMessage) {
+      setError(lang === 'en'
+        ? 'This wallet cannot sign messages — moderation unavailable.'
+        : 'Ce wallet ne peut pas signer de message — modération indisponible.');
+      return;
+    }
     if (!window.confirm(lang === 'en' ? 'Delete this message?' : 'Supprimer ce message ?')) return;
     setDeletingId(id);
-    const r = await deleteChatMessage(id);
+    setError(null);
+    const r = await deleteChatMessage({
+      id,
+      projectPda,
+      wallet: publicKey.toBase58(),
+      signMessage,
+    });
     setDeletingId(null);
     if ('error' in r) { setError(r.error); return; }
     setMessages((prev) => prev.filter((m) => m.id !== id));
@@ -146,6 +262,35 @@ export function ChatBox({ projectPda, creatorWallet }: Props) {
 
       {connected ? (
         <div className="space-y-1.5">
+          {needsSignature ? (
+            <p className="text-[11px] text-ink-500">
+              {lang === 'en'
+                ? `First message: a one-time signature, valid ${CHAT_SESSION_TTL_HOURS} h.`
+                : `Premier message : une signature unique, valable ${CHAT_SESSION_TTL_HOURS} h.`}
+            </p>
+          ) : sessionExpiresAt ? (
+            <div className="flex items-center gap-1.5 text-[11px] text-ink-500">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent-violet/70" aria-hidden="true" />
+              <span title={sessionExpiresAt.toLocaleString(lang === 'fr' ? 'fr-FR' : 'en-US')}>
+                {lang === 'en'
+                  ? `Chat session active until ${sessionLabel(sessionExpiresAt)}`
+                  : `Session chat active jusqu'à ${sessionLabel(sessionExpiresAt)}`}
+              </span>
+              <button
+                type="button"
+                onClick={handleRevokeSession}
+                disabled={revoking}
+                title={lang === 'en'
+                  ? 'Revoke on the server — invalidates this session on every device, for all projects.'
+                  : 'Révoquer côté serveur — invalide la session sur tous les appareils et tous les projets.'}
+                className="shrink-0 underline decoration-dotted underline-offset-2 transition hover:text-ink-200 disabled:opacity-40"
+              >
+                {revoking
+                  ? (lang === 'en' ? 'Revoking…' : 'Révocation…')
+                  : (lang === 'en' ? 'Revoke' : 'Révoquer')}
+              </button>
+            </div>
+          ) : null}
           <div className="flex gap-2">
             <label htmlFor="chat-input" className="sr-only">{t('chat.placeholder')}</label>
             <input

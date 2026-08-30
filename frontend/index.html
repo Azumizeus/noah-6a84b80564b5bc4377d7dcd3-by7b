@@ -1,19 +1,78 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#030308" />
-  <title>BuildPact — Pacts collaboratifs on-chain</title>
-  <meta name="description" content="BuildPact : créez des pacts de développement avec escrow on-chain sur Solana. Jalons, validations multi-membres, paiements sécurisés." />
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- 29/08 (nuit) : favicon.png était référencé mais absent de public/ —
+         onglet cassé en prod. SVG en priorité (net à toute taille, se
+         reteinte pas avec le thème actif — c'est un repère fixe comme le
+         logo dans l'en-tête), PNG en repli pour les navigateurs qui ne
+         savent pas afficher un favicon SVG. -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#030308" />
+    <title>BuildPact — Le pacte on-chain des builders Solana</title>
+    <meta
+      name="description"
+      content="Kickstarter + cap table on-chain pour builders Solana : rôles et parts définis à la création, approbation mutuelle, financement via escrow PDA, distribution automatique 2% protocole / 98% membres. Devnet."
+    />
 
-  <!-- Fonts Space Grotesk & Space Mono -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
-</head>
-<body>
-  <div id="root"></div>
-  <script type="module" src="/src/main.tsx"></script>
-</body>
+    <!-- Partage réseaux sociaux (X, Discord, Telegram…) — absent jusqu'ici,
+         un lien BuildPact partagé n'affichait ni image ni description.
+         ⚠️ og:url/og:image pointent vers buildpact-solana.vercel.app, le
+         domaine trouvé dans BUILDPACT-RESUME-OFFICIEL-FR.md — À REVÉRIFIER
+         une fois le nouveau repo/déploiement en place, sinon la carte de
+         partage pointera vers une ancienne URL. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="BuildPact" />
+    <meta property="og:title" content="BuildPact — Le pacte on-chain des builders Solana" />
+    <meta
+      property="og:description"
+      content="Kickstarter + cap table on-chain pour builders Solana. Rôles/parts, approbation mutuelle, escrow PDA, distribution automatique. Devnet."
+    />
+    <meta property="og:image" content="https://buildpact-solana.vercel.app/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:url" content="https://buildpact-solana.vercel.app/" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="BuildPact — Le pacte on-chain des builders Solana" />
+    <meta
+      name="twitter:description"
+      content="Kickstarter + cap table on-chain pour builders Solana. Devnet."
+    />
+    <meta name="twitter:image" content="https://buildpact-solana.vercel.app/og-image.png" />
+
+    <!-- Space Grotesk (display + body) et Space Mono (chiffres, adresses, PDA).
+         Sans ces deux liens, font-sans et font-mono retombent sur les polices
+         système : toute la hiérarchie typographique de l'app disparaît sans
+         qu'aucune erreur ne soit levée. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+
+    <!-- ⚠️ NE PAS RÉINTRODUIRE :
+         <script src="https://content.trynoah.ai/utils.js"></script>
+
+         C'est ce script — et lui seul — qui injectait le badge « Made with
+         Noah AI » en bas de page. Il n'est appelé par aucun code du projet :
+         il monte son propre nœud dans le DOM après le chargement, ce qui
+         explique qu'aucune recherche dans src/ ne le trouvait.
+
+         Sa suppression règle aussi l'alerte Semgrep « missing integrity
+         attribute » : un script tiers sans SRI peut être modifié à la source
+         et exécuter n'importe quoi dans la page.
+
+         Le badge d'écosystème qui le remplace est un vrai composant React :
+         src/components/SeekerNexusBadge.tsx, monté dans src/App.tsx. -->
+  </body>
 </html>

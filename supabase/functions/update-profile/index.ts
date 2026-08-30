@@ -46,6 +46,9 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 const SKILL_LEVELS = ['debutant', 'confirme', 'expert'];
+// Doit rester synchronisé avec src/lib/theme/palettes.ts (PALETTES).
+// 29/08 (soir) : + aurum, atelier (thème premium V2).
+const THEME_PALETTES = ['violet', 'cyan', 'coral', 'aurum', 'atelier'];
 
 interface ProfilePayload {
   display_name?: string;
@@ -56,6 +59,9 @@ interface ProfilePayload {
   links?: Record<string, string>;
   available?: boolean;
   avatar_url?: string;
+  banner_url?: string;
+  theme_palette?: string;
+  hide_wallet?: boolean;
 }
 
 function sanitizeProfile(p: ProfilePayload) {
@@ -82,12 +88,25 @@ function sanitizeProfile(p: ProfilePayload) {
   }
   const available = Boolean(p.available ?? true);
   const avatar_url = typeof p.avatar_url === 'string' ? p.avatar_url.slice(0, 500) : '';
-  return { display_name, bio, roles, skills, skill_levels, links, available, avatar_url };
+  const banner_url = typeof p.banner_url === 'string' ? p.banner_url.slice(0, 500) : '';
+  const theme_palette = typeof p.theme_palette === 'string' && THEME_PALETTES.includes(p.theme_palette) ? p.theme_palette : null;
+  // Réglage "confidentialité du profil" (29/08, soir suivant) — masque
+  // l'adresse wallet complète sur l'affichage public (annuaire, fiche
+  // builder). Ne change RIEN à la chaîne : les transactions restent
+  // vérifiables, seul le rendu de l'annuaire/fiche est concerné.
+  const hide_wallet = Boolean(p.hide_wallet ?? false);
+  return { display_name, bio, roles, skills, skill_levels, links, available, avatar_url, banner_url, theme_palette, hide_wallet };
 }
 
 const AVATAR_BUCKET = 'builder-avatars';
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024; // 2 Mo
 const ALLOWED_AVATAR_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+
+// Bucket déjà créé côté migration (add_banner_url_and_buckets_for_network) —
+// même logique que l'avatar mais bannière 16:9, donc quota plus large.
+const BANNER_BUCKET = 'builder-banners';
+const MAX_BANNER_BYTES = 4 * 1024 * 1024; // 4 Mo
+const ALLOWED_BANNER_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -173,6 +192,30 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ uploadUrl: signedUpload.signedUrl, token: signedUpload.token, path, publicUrl: pub.publicUrl });
   }
 
+  // ═══ action='banner-upload-url' : même principe que l'avatar, bucket dédié
+  // (builder-banners) pour ne pas mélanger les quotas/formats. ═══
+  if (body.action === 'banner-upload-url') {
+    const mimeType = String(body.mimeType ?? '');
+    const sizeBytes = Number(body.sizeBytes ?? 0);
+    if (!ALLOWED_BANNER_TYPES.includes(mimeType)) {
+      return jsonResponse({ error: 'Format non supporté — utilise PNG, JPEG, WebP ou GIF.' }, 400);
+    }
+    if (!Number.isFinite(sizeBytes) || sizeBytes <= 0 || sizeBytes > MAX_BANNER_BYTES) {
+      return jsonResponse({ error: `Fichier trop lourd (max ${MAX_BANNER_BYTES / 1024 / 1024} Mo).` }, 400);
+    }
+    const ext = mimeType === 'image/jpeg' ? 'jpg' : mimeType.split('/')[1];
+    const path = `${wallet}/banner.${ext}`;
+    const { data: signedUpload, error: signErr } = await admin.storage
+      .from(BANNER_BUCKET)
+      .createSignedUploadUrl(path, { upsert: true });
+    if (signErr || !signedUpload) {
+      console.error('[update-profile] banner signed url error:', signErr?.message);
+      return jsonResponse({ error: "Échec de préparation de l'upload — réessaie." }, 500);
+    }
+    const { data: pub } = admin.storage.from(BANNER_BUCKET).getPublicUrl(path);
+    return jsonResponse({ uploadUrl: signedUpload.signedUrl, token: signedUpload.token, path, publicUrl: pub.publicUrl });
+  }
+
   const clean = sanitizeProfile(profile ?? {});
 
   const { error } = await admin.from('builder_profiles').upsert(
@@ -186,17 +229,15 @@ Deno.serve(async (req: Request) => {
       links: clean.links,
       available: clean.available,
       avatar_url: clean.avatar_url,
+      banner_url: clean.banner_url,
+      theme_palette: clean.theme_palette,
+      hide_wallet: clean.hide_wallet,
     },
     { onConflict: 'wallet' }
   );
 
   if (error) {
     console.error('[update-profile] upsert error:', error.message);
-    // ⚠️ Devnet/MVP : on renvoie le message Postgres brut au client pour que
-    // l'échec soit diagnosticable directement depuis l'UI (au lieu du
-    // générique "réessaie" qui masquait la vraie cause — colonne manquante,
-    // contrainte violée, etc.). Pas de donnée sensible exposée ici (juste le
-    // texte d'erreur SQL), acceptable pour ce stade du projet.
     return jsonResponse({ error: `Échec de l'enregistrement — ${error.message}` }, 500);
   }
 

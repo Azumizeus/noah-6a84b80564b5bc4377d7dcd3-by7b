@@ -4,12 +4,17 @@ import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 import WalletButton from './WalletButton';
+import { fetchTokenBalances, type TokenBalance } from '../lib/tokenBalances';
 
 export function AppWalletButton() {
   const { connection } = useConnection();
   const { publicKey, connected, connecting, disconnect } = useWallet();
   const { setVisible } = useWalletModal();
   const [balance, setBalance] = useState<number | null>(null);
+  // Soldes SPL (USDC, SKR/SKG si déployés, autres tokens détenus) — voir
+  // lib/tokenBalances.ts. Lecture seule, aucun lien avec le financement
+  // des pacts (toujours en SOL natif côté programme).
+  const [tokenBalances, setTokenBalances] = useState<TokenBalance[]>([]);
 
   useEffect(() => {
     if (!publicKey) { setBalance(null); return; }
@@ -17,6 +22,15 @@ export function AppWalletButton() {
     connection.getBalance(publicKey)
       .then((l) => { if (!cancelled) setBalance(l / LAMPORTS_PER_SOL); })
       .catch(() => { if (!cancelled) setBalance(null); });
+    return () => { cancelled = true; };
+  }, [connection, publicKey]);
+
+  useEffect(() => {
+    if (!publicKey) { setTokenBalances([]); return; }
+    let cancelled = false;
+    fetchTokenBalances(connection, publicKey)
+      .then((list) => { if (!cancelled) setTokenBalances(list); })
+      .catch(() => { if (!cancelled) setTokenBalances([]); });
     return () => { cancelled = true; };
   }, [connection, publicKey]);
 
@@ -56,6 +70,7 @@ export function AppWalletButton() {
       connecting={connecting}
       address={publicKey ? publicKey.toBase58() : null}
       balance={balance}
+      tokenBalances={tokenBalances}
       onConnect={handleConnect}
       onDisconnect={handleDisconnect}
     />

@@ -1,0 +1,9 @@
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Identique au LogoMark affiché dans l'app (DashboardLayout.tsx) — même
+       géométrie et mêmes couleurs figées (violet Solana, vert néon "argent",
+       or "mise en avant"), pour que l'onglet du navigateur corresponde
+       exactement à ce que l'utilisateur voit une fois connecté. -->
+  <rect x="2" y="2" width="28" height="28" rx="8" fill="#0A0A18" stroke="#9945FF" stroke-opacity="0.5" stroke-width="1"/>
+  <path d="M10 22V10h6a4 4 0 0 1 0 8h-3" stroke="#14F195" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="22" cy="11" r="2" fill="#FFD700"/>
+</svg>

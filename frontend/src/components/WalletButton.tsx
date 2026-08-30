@@ -2,15 +2,33 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useLanguage } from '../lib/i18n/LanguageContext';
+import type { TokenBalance } from '../lib/tokenBalances';
 
 type WalletButtonProps = {
   connected: boolean;
   connecting: boolean;
   address?: string | null;
   balance?: number | null;
+  /** Soldes SPL détenus (USDC, SKR/SKG si déployés, etc.) — voir
+   *  lib/tokenBalances.ts. Vide tant qu'en cours de chargement. */
+  tokenBalances?: TokenBalance[];
   onConnect: () => void;
   onDisconnect: () => void;
 };
+
+/** Troncation d'un mint non reconnu — même convention que les adresses. */
+function truncateMint(mint: string): string {
+  if (mint.length <= 8) return mint;
+  return `${mint.slice(0, 4)}…${mint.slice(-4)}`;
+}
+
+/** Formatage compact — 6 décimales USDC de bruit n'apportent rien à lire
+ *  d'un coup d'œil dans un menu déroulant. */
+function formatTokenAmount(n: number): string {
+  if (n === 0) return '0';
+  if (n < 0.001) return '<0.001';
+  return n.toLocaleString('fr-FR', { maximumFractionDigits: n < 1 ? 4 : 2 });
+}
 
 /** Troncation standard 4…4 pour adresses base58 Solana */
 function truncateAddress(addr: string): string {
@@ -23,6 +41,7 @@ export function WalletButton({
   connecting,
   address,
   balance,
+  tokenBalances = [],
   onConnect,
   onDisconnect,
 }: WalletButtonProps) {
@@ -115,6 +134,24 @@ export function WalletButton({
                 {balance != null ? balance.toFixed(4) : '0.0000'}{' '}
                 <span className="text-accent-violet">SOL</span>
               </p>
+              {/* Autres tokens détenus (USDC, SKR/SKG si déployés, etc.)
+                  — lecture seule, voir lib/tokenBalances.ts. Rien si le
+                  wallet n'en détient aucun : pas de bruit visuel inutile. */}
+              {tokenBalances.length > 0 && (
+                <ul className="mt-2 space-y-1 border-t border-violet-500/10 pt-2">
+                  {tokenBalances.map((tb) => (
+                    <li
+                      key={tb.mint}
+                      className="flex items-center justify-between gap-2 font-mono text-xs tabular-nums text-ink-200"
+                    >
+                      <span className="truncate text-ink-400">
+                        {tb.symbol ?? truncateMint(tb.mint)}
+                      </span>
+                      <span>{formatTokenAmount(tb.uiAmount)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
             <div className="my-1 h-px bg-violet-500/15" />
             <a

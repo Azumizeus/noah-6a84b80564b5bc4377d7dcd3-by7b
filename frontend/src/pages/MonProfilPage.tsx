@@ -10,7 +10,7 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { DashboardLayout, FadeInUp } from '../components/DashboardLayout';
 import AppWalletButton from '../components/AppWalletButton';
 import EmptyState from '../components/EmptyState';
-import { AVAILABILITY_META, SKILL_LEVEL_META, SKILL_LEVELS, loadProfile, saveProfile } from '../lib/profile';
+import { AVAILABILITY_META, SKILL_LEVEL_META, SKILL_LEVELS, loadProfile, saveProfile, emptyProfile } from '../lib/profile';
 import type { BuilderProfile, SkillLevel } from '../lib/profile';
 import { fetchProfile, submitProfileUpdate, uploadProfileAvatar, isRemoteEnabled } from '../lib/profileRemote';
 import { ROLE_GROUPS, ALL_ROLES } from '../lib/roles';
@@ -19,10 +19,12 @@ import { formatSol, formatAddress } from '../lib/pacts';
 import { fetchContactRequestsFor, fetchRatingSummaries, markContactSeenNow } from '../lib/contact';
 import type { ContactRequest } from '../lib/contact';
 import StarRating from '../components/StarRating';
+import ChatSessionsPanel from '../components/ChatSessionsPanel';
+import FreeGrid from '../components/FreeGrid';
 import { useLanguage } from '../lib/i18n/LanguageContext';
+import ProfileSettingsModal from '../components/ProfileSettingsModal';
 
 const inputCls = 'w-full rounded-lg border border-white/10 bg-black/30 p-2.5 text-sm text-white focus:border-accent-violet/50 focus:outline-none';
-const emptyProfile = (wallet: string): BuilderProfile => ({ wallet, pseudo: '', bio: '', skills: [], skillLevels: {}, links: {}, availability: 'open', avatarUrl: null, updatedAt: 0 });
 function roleLabel(id: string): string { return ALL_ROLES.find((r) => r.id === id)?.label ?? id; }
 function skillLabelWithLevel(id: string, levels: Record<string, SkillLevel>, t: (key: string) => string): string {
   const lvl = levels[id];
@@ -33,8 +35,7 @@ function skillLabelWithLevel(id: string, levels: Record<string, SkillLevel>, t: 
 // impression SAUF #profile-print-area — évite de toucher DashboardLayout
 // (sidebar/nav) juste pour cette page. Pas de dépendance PDF ajoutée :
 // window.print() -> "Enregistrer en PDF" du navigateur suffit pour un CV rapide.
-const PRINT_STYLE = `
-@media print {
+const PRINT_STYLE = `@media print {
   body * { visibility: hidden !important; }
   #profile-print-area, #profile-print-area * { visibility: visible !important; }
   #profile-print-area {
@@ -47,8 +48,7 @@ const PRINT_STYLE = `
     color: #111;
     background: #fff;
   }
-}
-`;
+}`;
 
 type SyncState = 'idle' | 'saving' | 'success' | 'error';
 type ViewMode = 'view' | 'edit';
@@ -191,6 +191,7 @@ export default function MonProfilPage() {
   const [syncError, setSyncError] = useState<string | null>(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Chargement : Supabase d'abord, fallback localStorage (cache offline / brouillon)
   useEffect(() => {
@@ -218,14 +219,25 @@ export default function MonProfilPage() {
   return (
     <DashboardLayout walletSlot={<AppWalletButton />}>
       <FadeInUp>
-        <header className="mb-6 sm:mb-8">
-          <p className="font-mono text-xs uppercase tracking-wider text-accent-neon">{t('profile.eyebrow')}</p>
-          <h1 className="mt-1 font-sans text-2xl font-bold tracking-tight text-white sm:text-3xl">
-            {t('profile.titleLine1')} <span className="text-accent-violet">{t('profile.titleLine2')}</span>
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm text-ink-300">
-            {t('profile.subtitle')}
-          </p>
+        <header className="mb-6 flex flex-wrap items-start justify-between gap-3 sm:mb-8">
+          <div>
+            <p className="font-mono text-xs uppercase tracking-wider text-accent-neon">{t('profile.eyebrow')}</p>
+            <h1 className="mt-1 font-sans text-2xl font-bold tracking-tight text-white sm:text-3xl">
+              {t('profile.titleLine1')} <span className="text-accent-violet">{t('profile.titleLine2')}</span>
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm text-ink-300">
+              {t('profile.subtitle')}
+            </p>
+          </div>
+          {publicKey && (
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(true)}
+              className="shrink-0 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs font-medium text-ink-200 transition hover:border-accent-violet/40 hover:text-white"
+            >
+              {t('profile.settingsButton')}
+            </button>
+          )}
         </header>
       </FadeInUp>
 
@@ -578,17 +590,51 @@ export default function MonProfilPage() {
             )}
           </div>
 
-          <div className="space-y-4">
-            <FadeInUp>
-              <MesPactsEtGains />
-            </FadeInUp>
-            {publicKey && (
-              <FadeInUp>
-                <ContactInbox wallet={publicKey.toBase58()} signMessage={signMessage} />
-              </FadeInUp>
-            )}
+          <div>
+            {/* Grille libre (29/08, nuit) — remplace le réordonnancement par
+                flèches sur CETTE page seulement (demande explicite : "vraie
+                grille libre avec redimensionnement au pixel pour dashboard
+                profil"). Page Pact et Marketplace gardent le mécanisme par
+                flèches (useSectionOrder), plus léger et suffisant là où ça
+                n'a pas été demandé explicitement. */}
+            <FreeGrid
+              pageKey="profile-sidebar"
+              wallet={publicKey?.toBase58() ?? null}
+              items={[
+                {
+                  id: 'pacts',
+                  content: <MesPactsEtGains />,
+                  defaultLayout: { x: 0, y: 0, w: 12, h: 8, minW: 4, minH: 4 },
+                },
+                ...(publicKey
+                  ? [
+                      {
+                        id: 'contact',
+                        content: <ContactInbox wallet={publicKey.toBase58()} signMessage={signMessage} />,
+                        defaultLayout: { x: 0, y: 8, w: 12, h: 8, minW: 4, minH: 4 },
+                      },
+                      {
+                        id: 'chat',
+                        content: <ChatSessionsPanel wallet={publicKey.toBase58()} />,
+                        defaultLayout: { x: 0, y: 16, w: 12, h: 8, minW: 4, minH: 4 },
+                      },
+                    ]
+                  : []),
+              ]}
+            />
           </div>
         </div>
+      )}
+
+      {settingsOpen && (
+        <ProfileSettingsModal
+          onClose={() => setSettingsOpen(false)}
+          profile={profile}
+          onSaved={(saved) => {
+            setProfile(saved);
+            setSavedProfile(saved);
+          }}
+        />
       )}
     </DashboardLayout>
   );

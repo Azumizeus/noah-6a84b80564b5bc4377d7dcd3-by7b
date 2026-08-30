@@ -5,16 +5,40 @@
 // 5 compétences max), ici tout est affiché : bio complète, toutes les
 // compétences + niveau, tous les liens, wallet complet, note détaillée.
 // ═══════════════════════════════════════════════════════════════════
+import { useEffect, useState } from 'react';
 import { ALL_ROLES } from '../lib/roles';
 import type { BuilderProfile } from '../lib/profile';
 import { AVAILABILITY_META, SKILL_LEVEL_META } from '../lib/profile';
+import { formatAddress } from '../lib/pacts';
 import type { RatingSummary } from '../lib/contact';
+import { fetchPostsByWallet, type NetworkPost } from '../lib/network';
+import { fetchWalletChronicle, type ChronicleEntry } from '../lib/gamification';
 import StarRating from './StarRating';
 import { useLanguage } from '../lib/i18n/LanguageContext';
 
 function roleLabel(id: string): string {
   return ALL_ROLES.find((r) => r.id === id)?.label ?? id;
 }
+
+// Mêmes libellés/emoji que l'onglet Chronique de QuestBoard.tsx — dupliqués
+// ici à dessein plutôt qu'extraits en commun, pour ne pas toucher un
+// composant déjà en place et testé (QuestBoard) dans le cadre de cet ajout.
+const CHRONICLE_LABEL_KEY: Record<string, string> = {
+  create: 'gamification.chronicleCreate',
+  approve: 'gamification.chronicleApprove',
+  fund: 'gamification.chronicleFund',
+  finalize: 'gamification.chronicleFinalize',
+  distribute: 'gamification.chronicleDistribute',
+  add_member: 'gamification.chronicleAddMember',
+};
+const CHRONICLE_EMOJI: Record<string, string> = {
+  create: '🌱',
+  approve: '🤝',
+  fund: '💰',
+  finalize: '🏁',
+  distribute: '🎁',
+  add_member: '➕',
+};
 
 interface Props {
   profile: BuilderProfile;
@@ -25,8 +49,31 @@ interface Props {
 }
 
 export default function BuilderDetailModal({ profile, rating, canContact, onClose, onContact }: Props) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const linkEntries = Object.entries(profile.links).filter(([, v]) => v && v.trim() !== '');
+
+  // Activité du builder — posts Réseau + chronique de pacts (29/08, soir).
+  // Chargée à l'ouverture de LA fiche courante uniquement (dépend de
+  // profile.wallet), pas au montage du composant hôte (BuildersPage), pour
+  // ne pas fetcher l'activité de tout l'annuaire d'un coup.
+  const [activityTab, setActivityTab] = useState<'posts' | 'chronicle'>('posts');
+  const [posts, setPosts] = useState<NetworkPost[] | null>(null);
+  const [chronicle, setChronicle] = useState<ChronicleEntry[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setPosts(null);
+    setChronicle(null);
+    fetchPostsByWallet(profile.wallet).then((p) => {
+      if (!cancelled) setPosts(p);
+    });
+    fetchWalletChronicle(profile.wallet, 20).then((c) => {
+      if (!cancelled) setChronicle(c);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [profile.wallet]);
 
   return (
     <div
@@ -102,8 +149,93 @@ export default function BuilderDetailModal({ profile, rating, canContact, onClos
         )}
 
         <div>
+          {/* Onglets Posts/Chronique (29/08, soir) — activité publique du
+              builder, en lecture seule ici (réagir/commenter reste sur le
+              fil #/network lui-même, pas dupliqué dans cette fiche). */}
+          <div role="tablist" className="mb-2 flex gap-1 border-b border-white/10">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activityTab === 'posts'}
+              onClick={() => setActivityTab('posts')}
+              className={
+                'px-2.5 py-1.5 text-[11px] font-medium transition ' +
+                (activityTab === 'posts' ? 'border-b-2 border-accent-violet text-white' : 'text-ink-400 hover:text-white')
+              }
+            >
+              {t('builders.detailActivityPosts')} {posts && posts.length > 0 ? `(${posts.length})` : ''}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activityTab === 'chronicle'}
+              onClick={() => setActivityTab('chronicle')}
+              className={
+                'px-2.5 py-1.5 text-[11px] font-medium transition ' +
+                (activityTab === 'chronicle' ? 'border-b-2 border-accent-violet text-white' : 'text-ink-400 hover:text-white')
+              }
+            >
+              {t('builders.detailActivityChronicle')} {chronicle && chronicle.length > 0 ? `(${chronicle.length})` : ''}
+            </button>
+          </div>
+
+          {activityTab === 'posts' ? (
+            posts === null ? (
+              <p className="text-[11px] text-ink-500">{t('builders.detailLoadingActivity')}</p>
+            ) : posts.length === 0 ? (
+              <p className="text-[11px] text-ink-500">{t('builders.detailNoPosts')}</p>
+            ) : (
+              <ul className="max-h-48 space-y-1.5 overflow-y-auto">
+                {posts.map((p) => (
+                  <li key={p.id} className="rounded-lg border border-white/5 bg-black/20 px-3 py-2">
+                    <p className="line-clamp-3 whitespace-pre-wrap text-[11px] leading-relaxed text-ink-200">{p.body}</p>
+                    <span className="mt-1 block text-[10px] text-ink-500">
+                      {new Date(p.createdAt).toLocaleDateString(lang === 'en' ? 'en-US' : 'fr-FR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                      })}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )
+          ) : chronicle === null ? (
+            <p className="text-[11px] text-ink-500">{t('builders.detailLoadingActivity')}</p>
+          ) : chronicle.length === 0 ? (
+            <p className="text-[11px] text-ink-500">{t('builders.detailNoChronicle')}</p>
+          ) : (
+            <ul className="max-h-48 space-y-1.5 overflow-y-auto">
+              {chronicle.map((e, i) => (
+                <li
+                  key={i}
+                  className="flex items-center justify-between gap-2 rounded-lg border border-white/5 bg-black/20 px-3 py-2 text-[11px]"
+                >
+                  <span className="inline-flex items-center gap-2 text-ink-200">
+                    <span aria-hidden="true">{CHRONICLE_EMOJI[e.kind] ?? '•'}</span>
+                    {t(CHRONICLE_LABEL_KEY[e.kind] ?? e.kind)}
+                    {e.amountSol !== null && (
+                      <span className="font-mono text-accent-neon">{e.amountSol.toFixed(2)} SOL</span>
+                    )}
+                  </span>
+                  <span className="shrink-0 font-mono text-ink-500">
+                    {new Date(e.createdAt).toLocaleDateString(lang === 'en' ? 'en-US' : 'fr-FR', {
+                      day: '2-digit',
+                      month: '2-digit',
+                    })}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div>
           <p className="mb-1 text-xs font-semibold text-white">{t('builders.detailWallet')}</p>
-          <p className="break-all font-mono text-[10px] text-ink-500">{profile.wallet}</p>
+          {/* Confidentialité du profil (29/08, soir suivant) — masque le wallet complet à l'affichage si le builder l'a demandé. Ne change rien on-chain, seulement ce rendu. */}
+          <p className="break-all font-mono text-[10px] text-ink-500">
+            {profile.hideWallet ? formatAddress(profile.wallet) : profile.wallet}
+          </p>
         </div>
 
         {canContact && profile.availability === 'open' && (
