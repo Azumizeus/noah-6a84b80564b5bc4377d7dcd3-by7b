@@ -18,11 +18,12 @@ target/.rustc_info.json
 .vercel
 .env*
 
-# Build output — on garde uniquement l'IDL, le .so et la keypair du programme
+# Build output — on garde uniquement l'IDL et le .so. La keypair du programme
+# ne doit JAMAIS être commitée (incidents 5-7) : elle reste hors repo.
 target/
 !target/idl/
 !target/deploy/*.so
-!target/deploy/*-keypair.json
+*keypair.json
 
 # Clés privées — ne JAMAIS committer
 wallet.json

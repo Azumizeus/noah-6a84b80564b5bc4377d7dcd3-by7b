@@ -42,7 +42,7 @@ Three real, finalized, working pacts are visible right now on the [Marketplace](
 | Item | Value |
 |---|---|
 | Program ID | `9quyDwntXDBhNhTmrfCf7xEXVFaxYMB83BwPEUeqVoUJ` |
-| Config PDA | seeds `["config"]` — `protocol_fee_bps = 200` (2%) |
+| Protocol fee | `PROTOCOL_FEE_BPS = 200` (2%) — compile-time constant, deliberately no mutable config account (see SECURITY.md) |
 | Project PDA | seeds `["project", creator, project_id]` |
 | Vault PDA | seeds `["vault", project]` |
 | Network | Devnet only (mainnet = post-hackathon) |
@@ -53,11 +53,11 @@ Every account is derived from canonical seeds, with signer checks and checked ar
 
 An internal audit (Claude + vulnhunter) found that `protocol_wallet` — the address receiving the 2% fee — wasn't locked in `create_project`: any creator could have pointed it at their own wallet and hijacked the protocol's fees.
 
-Fix: a fixed `PROTOCOL_WALLET` constant in the program, enforced with a `require!` that rejects any other value (`InvalidProtocolWallet`, error code 6021). Tested (the negative test is part of the 13/13 passing suite) and redeployed to Devnet — the currently live program includes this fix.
+Fix: a fixed `PROTOCOL_WALLET` constant in the program, enforced with a `require!` that rejects any other value (`InvalidProtocolWallet`, error code 6021). Tested (the negative test is part of the 24/24 passing suite) and redeployed to Devnet — the currently live program includes this fix.
 
 ## Tests
 
-13/13 passing, including the full happy path (create → members → approve → finalize → fund → distribute) and the rejection cases: invalid `protocol_wallet`, a non-creator trying to add a member or close the project, funding a non-finalized pact, closing an already-distributed pact. The dust-account attack vector is neutralized — a dust-polluted vault refunds the creator on close instead of blocking.
+24/24 passing on LiteSVM, including the full happy path (create → members → approve → finalize → fund → distribute, verifying the protocol receives exactly 2% and members split 98% pro-rata) and every rejection path: invalid `protocol_wallet`, a non-creator trying to add a member or close the project, funding a non-finalized pact, share bounds (`ShareExceeded` on create and cumulative total, exactly 10000 accepted, short sum rejected), `DuplicateMember`, `TooManyMembers`, `NotAllApproved`, `AlreadyFinalized`, `MemberMismatch` on distribute (swapped or truncated payout list), closing an already-distributed pact, and a non-creator trying to close. The dust-account attack vector is neutralized — a dust-polluted vault refunds the creator on close instead of blocking.
 
 ## Questions we're anticipating
 
