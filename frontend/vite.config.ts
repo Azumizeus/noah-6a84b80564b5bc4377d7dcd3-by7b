@@ -1,7 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
-import componentTagger from "./plugins/component-tagger";
 
 export default defineConfig(({ mode }) => ({
   server: {
@@ -18,7 +17,7 @@ export default defineConfig(({ mode }) => ({
       binaryInterval: 500,
     },
   },
-  plugins: [react(), mode === "development" && componentTagger()],
+  plugins: [react()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),
