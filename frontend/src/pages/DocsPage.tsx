@@ -6,6 +6,9 @@ import DemoKit from '../components/DemoKit';
 import { PROGRAM_ID } from '../lib/constants';
 import { useLanguage } from '../lib/i18n/LanguageContext';
 import type { Lang } from '../lib/i18n/translations';
+import type { FC } from 'react';
+import { IconRankAnon } from '../components/RankIcons';
+import { IconLock, IconChatBubble, IconMailIn } from '../components/MiscIcons';
 
 // ═══════════════════════════════════════════════════════════════════
 // 1. MODE D'EMPLOI INTERACTIF — stepper cliquable, 6 étapes du protocole
@@ -257,9 +260,17 @@ const INSTRUCTIONS: { name: string; desc: Record<Lang, string> }[] = [
 // l'app, pas seulement des 8 instructions on-chain ci-dessus.
 // ═══════════════════════════════════════════════════════════════════
 
-const PLATFORM_FEATURES: { icon: string; name: Record<Lang, string>; desc: Record<Lang, string> }[] = [
+// 30/08 : `icon` accepte soit un composant SVG maison (passe Duolingo,
+// voir RankIcons/MiscIcons), soit encore un emoji brut pour les 2 pas
+// encore refaits (🧭 annuaire, ⭐ notation) — migration progressive plutôt
+// que tout retracer d'un coup.
+const PLATFORM_FEATURES: {
+  icon: FC<{ className?: string }> | string;
+  name: Record<Lang, string>;
+  desc: Record<Lang, string>;
+}[] = [
   {
-    icon: '👤',
+    icon: IconRankAnon,
     name: { fr: 'Profil builder', en: 'Builder profile' },
     desc: {
       fr: 'Bio, compétences avec niveau (débutant/confirmé/expert), avatar, disponibilité — enregistré via signature wallet, export PDF façon CV rapide.',
@@ -267,7 +278,7 @@ const PLATFORM_FEATURES: { icon: string; name: Record<Lang, string>; desc: Recor
     },
   },
   {
-    icon: '🔒',
+    icon: IconLock,
     name: { fr: 'Vault de documents', en: 'Document vault' },
     desc: {
       fr: 'Espace privé par projet pour les livrables : upload par les membres, validation ou demande de changements par le founder, historique de versions. Accès protégé par signature wallet + vérification on-chain de l\'appartenance au projet.',
@@ -275,7 +286,7 @@ const PLATFORM_FEATURES: { icon: string; name: Record<Lang, string>; desc: Recor
     },
   },
   {
-    icon: '💬',
+    icon: IconChatBubble,
     name: { fr: 'Chat & fil d\'avancement', en: 'Chat & updates feed' },
     desc: {
       fr: 'Discussion en direct par projet (Realtime) et fil de mises à jour des membres, visibles sur la fiche publique du pact.',
@@ -291,7 +302,7 @@ const PLATFORM_FEATURES: { icon: string; name: Record<Lang, string>; desc: Recor
     },
   },
   {
-    icon: '📩',
+    icon: IconMailIn,
     name: { fr: 'Demandes de contact', en: 'Contact requests' },
     desc: {
       fr: 'Envoie une demande à un builder disponible ("je cherche ce rôle, es-tu dispo ?") — signée par ton wallet, reçue dans sa boîte de réception, elle aussi protégée par signature.',
@@ -372,7 +383,10 @@ export function DocsPage() {
         {PLATFORM_FEATURES.map((f) => (
           <FadeInUp key={f.name.fr}>
             <div className="glass-panel h-full p-4">
-              <p className="text-sm font-semibold text-white">{f.icon} {f.name[lang]}</p>
+              <p className="flex items-center gap-1.5 text-sm font-semibold text-white">
+                {typeof f.icon === 'string' ? <span aria-hidden="true">{f.icon}</span> : <f.icon className="h-4 w-4 shrink-0" />}
+                {f.name[lang]}
+              </p>
               <p className="mt-1.5 text-xs leading-relaxed text-ink-400">{f.desc[lang]}</p>
             </div>
           </FadeInUp>

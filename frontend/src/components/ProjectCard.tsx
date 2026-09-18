@@ -6,6 +6,7 @@ import { useAnchorProgram } from '../hooks/useProjects';
 import { parseTxError, formatSol, getVaultBalance, explorerTxUrl } from '../lib/pacts';
 import { BN } from '@coral-xyz/anchor';
 import AddMemberModal from './AddMemberModal';
+import { IconLock } from './MiscIcons';
 
 interface Props {
   project: any;
@@ -178,10 +179,17 @@ export default function ProjectCard({ project, projectPda, onUpdate }: Props) {
               <button
                 onClick={handleFinalize}
                 disabled={loading !== null || totalMembers < 2}
-                className="flex-1 bg-purple-600 hover:bg-purple-500 text-white rounded-lg py-2 text-sm font-medium transition disabled:opacity-50"
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-purple-600 py-2 text-sm font-medium text-white transition hover:bg-purple-500 disabled:opacity-50"
                 title={totalMembers < 2 ? 'Minimum 2 membres requis' : ''}
               >
-                {loading === 'Finalize' ? 'Finalisation...' : '🔒 Finaliser'}
+                {loading === 'Finalize' ? (
+                  'Finalisation...'
+                ) : (
+                  <>
+                    <IconLock className="h-3.5 w-3.5 shrink-0" />
+                    Finaliser
+                  </>
+                )}
               </button>
             </>
           )}

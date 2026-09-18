@@ -28,6 +28,8 @@ const LABEL_KEY: Record<BackgroundStyle, string> = {
   nebula_hd: 'theme.backgroundNebulaHd',
   grid_hd: 'theme.backgroundGridHd',
   aurora_hd: 'theme.backgroundAuroraHd',
+  constellation_hd: 'theme.backgroundConstellationHd',
+  wave_hd: 'theme.backgroundWaveHd',
 };
 
 const DESC_KEY: Record<BackgroundStyle, string> = {
@@ -39,14 +41,18 @@ const DESC_KEY: Record<BackgroundStyle, string> = {
   nebula_hd: 'theme.backgroundNebulaHdDesc',
   grid_hd: 'theme.backgroundGridHdDesc',
   aurora_hd: 'theme.backgroundAuroraHdDesc',
+  constellation_hd: 'theme.backgroundConstellationHdDesc',
+  wave_hd: 'theme.backgroundWaveHdDesc',
 };
 
-/** Fichier image (public/backgrounds/) pour les 3 variantes HD — utilisé
+/** Fichier image (public/backgrounds/) pour les variantes HD — utilisé
  *  uniquement par MiniPreview ci-dessous pour l'aperçu miniature. */
 const HD_IMAGE: Partial<Record<BackgroundStyle, string>> = {
   nebula_hd: '/backgrounds/nebula-hd.jpg',
   grid_hd: '/backgrounds/grid-hd.jpg',
   aurora_hd: '/backgrounds/aurora-hd.jpg',
+  constellation_hd: '/backgrounds/constellation-hd.jpg',
+  wave_hd: '/backgrounds/wave-hd.jpg',
 };
 
 /** Mini-rendu de chaque style, approximé en CSS pur (pas de dépendance aux
@@ -108,6 +114,8 @@ function MiniPreview({ style, size = 'sm' }: { style: BackgroundStyle; size?: 's
     case 'nebula_hd':
     case 'grid_hd':
     case 'aurora_hd':
+    case 'constellation_hd':
+    case 'wave_hd':
       return (
         <span
           aria-hidden="true"

@@ -15,14 +15,17 @@ import { fetchPostsByWallet, type NetworkPost } from '../lib/network';
 import { fetchWalletChronicle, type ChronicleEntry } from '../lib/gamification';
 import StarRating from './StarRating';
 import { useLanguage } from '../lib/i18n/LanguageContext';
+import { CHRONICLE_ICON, IconCreate } from './QuestIcons';
 
 function roleLabel(id: string): string {
   return ALL_ROLES.find((r) => r.id === id)?.label ?? id;
 }
 
-// Mêmes libellés/emoji que l'onglet Chronique de QuestBoard.tsx — dupliqués
-// ici à dessein plutôt qu'extraits en commun, pour ne pas toucher un
-// composant déjà en place et testé (QuestBoard) dans le cadre de cet ajout.
+// Mêmes libellés que l'onglet Chronique de QuestBoard.tsx — dupliqués ici
+// à dessein plutôt qu'extraits en commun, pour ne pas toucher un composant
+// déjà en place et testé (QuestBoard) dans le cadre de cet ajout.
+// 30/08 : les emoji (🌱🤝💰🏁🎁➕) sont remplacés par CHRONICLE_ICON — déjà
+// construit pour QuestBoard, réutilisé tel quel plutôt que redupliqué ici.
 const CHRONICLE_LABEL_KEY: Record<string, string> = {
   create: 'gamification.chronicleCreate',
   approve: 'gamification.chronicleApprove',
@@ -30,14 +33,6 @@ const CHRONICLE_LABEL_KEY: Record<string, string> = {
   finalize: 'gamification.chronicleFinalize',
   distribute: 'gamification.chronicleDistribute',
   add_member: 'gamification.chronicleAddMember',
-};
-const CHRONICLE_EMOJI: Record<string, string> = {
-  create: '🌱',
-  approve: '🤝',
-  fund: '💰',
-  finalize: '🏁',
-  distribute: '🎁',
-  add_member: '➕',
 };
 
 interface Props {
@@ -212,7 +207,10 @@ export default function BuilderDetailModal({ profile, rating, canContact, onClos
                   className="flex items-center justify-between gap-2 rounded-lg border border-white/5 bg-black/20 px-3 py-2 text-[11px]"
                 >
                   <span className="inline-flex items-center gap-2 text-ink-200">
-                    <span aria-hidden="true">{CHRONICLE_EMOJI[e.kind] ?? '•'}</span>
+                    {(() => {
+                      const Icon = CHRONICLE_ICON[e.kind] ?? IconCreate;
+                      return <Icon className="h-3 w-3 shrink-0" />;
+                    })()}
                     {t(CHRONICLE_LABEL_KEY[e.kind] ?? e.kind)}
                     {e.amountSol !== null && (
                       <span className="font-mono text-accent-neon">{e.amountSol.toFixed(2)} SOL</span>

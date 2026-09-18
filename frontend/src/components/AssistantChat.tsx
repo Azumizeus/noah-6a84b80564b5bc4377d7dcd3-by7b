@@ -47,6 +47,17 @@ const GAP = 8;
 // collision.
 const DEFAULT_BOTTOM_OFFSET = 88;
 
+// 30/08 : endpoints compatibles OpenAI vérifiés publiquement (voir mémoire
+// buildpact_g4_providers_workflow_300826 / _providers_workflow suivante) —
+// NVIDIA NIM documente officiellement du Chat Completions OpenAI-compatible
+// sur ce host ; GoRouter expose /v1/chat/completions avec Bearer token,
+// même forme. Uniquement des valeurs pré-remplies dans le champ "Endpoint"
+// déjà générique — aucun nouveau code côté assistant-chat.
+const BASE_URL_PRESETS: { label: string; url: string }[] = [
+  { label: 'NVIDIA NIM', url: 'https://integrate.api.nvidia.com/v1' },
+  { label: 'GoRouter', url: 'https://gorouter.app/v1' },
+];
+
 function defaultBubblePos(): BubblePos {
   return {
     x: window.innerWidth - BUBBLE_SIZE - DEFAULT_MARGIN,
@@ -292,6 +303,26 @@ export function AssistantChat() {
                     placeholder={t('assistant.baseUrlPlaceholder')}
                     className="w-full rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-[11px] text-white outline-none focus:border-accent-violet/50"
                   />
+                  {/* Raccourcis (30/08) — fournisseurs compatibles OpenAI
+                      vérifiés (voir buildpact_g4_providers_workflow_300826) :
+                      NVIDIA NIM expose officiellement du Chat Completions
+                      OpenAI-compatible, GoRouter aussi (/v1/chat/completions,
+                      Bearer token — même forme que callOpenAiCompatible côté
+                      assistant-chat). Pas de nouveau code serveur, juste des
+                      valeurs pré-remplies dans ce champ texte déjà générique. */}
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    <span className="text-[10px] text-ink-500">{t('assistant.baseUrlPresets')}</span>
+                    {BASE_URL_PRESETS.map((preset) => (
+                      <button
+                        key={preset.url}
+                        type="button"
+                        onClick={() => setDraftBaseUrl(preset.url)}
+                        className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] font-medium text-ink-300 transition hover:border-accent-violet/40 hover:text-white"
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
                 </label>
               )}
 

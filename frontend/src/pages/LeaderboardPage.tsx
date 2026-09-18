@@ -14,7 +14,7 @@ import XpBar from '../components/XpBar';
 import BadgeShelf from '../components/BadgeShelf';
 import InfoTooltip from '../components/InfoTooltip';
 import QuestBoard from '../components/QuestBoard';
-import { RANK_EMOJI } from '../components/RankBadge';
+import { RANK_ICON, IconRankAnon } from '../components/RankIcons';
 import {
   fetchLeaderboard,
   fetchPactLeaderboard,
@@ -171,7 +171,10 @@ export default function LeaderboardPage() {
                         <td className="px-4 py-3 font-mono text-ink-300">#{i + 1}</td>
                         <td className="px-4 py-3">
                           <span className="inline-flex items-center gap-1.5 font-mono text-ink-200">
-                            <span aria-hidden="true">{RANK_EMOJI[rankKey] ?? '👤'}</span>
+                            {(() => {
+                              const Icon = RANK_ICON[rankKey] ?? IconRankAnon;
+                              return <Icon className="h-3 w-3 shrink-0" />;
+                            })()}
                             {formatAddress(row.wallet)}
                             {isMe && <span className="text-ink-500">{t('gamification.leaderboardYou')}</span>}
                           </span>

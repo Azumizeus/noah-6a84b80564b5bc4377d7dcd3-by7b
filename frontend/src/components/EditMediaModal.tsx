@@ -54,6 +54,16 @@ export default function EditMediaModal({
   const { publicKey, signMessage } = useWallet();
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [bannerFile, setBannerFile] = useState<File | null>(null);
+  // Bannières fournies (30/08) — presets statiques dans public/banners/,
+  // alternative à l'upload : pas de fichier à choisir, pas de nouvel appel
+  // uploadMediaFile, juste l'URL publique écrite directement dans le patch.
+  // Mutuellement exclusif avec bannerFile (un upload choisi désélectionne
+  // le preset et vice-versa, voir les deux setters ci-dessous).
+  const [bannerPreset, setBannerPreset] = useState<string | null>(null);
+  const BANNER_PRESETS = [
+    { url: '/banners/pact-generic.jpg', labelKey: 'editMedia.bannerPresetGeneric' },
+    { url: '/banners/profile-network.jpg', labelKey: 'editMedia.bannerPresetNetwork' },
+  ] as const;
   const [videoUrl, setVideoUrl] = useState(currentVideoUrl ?? '');
   const [aboutText, setAboutText] = useState(currentAboutText ?? '');
   const [aboutTextEn, setAboutTextEn] = useState(currentAboutTextEn ?? '');
@@ -69,7 +79,7 @@ export default function EditMediaModal({
   const aboutEnError = aboutEnChanged ? validateAboutText(aboutTextEn) : null;
 
   const handleSave = async () => {
-    if (!logoFile && !bannerFile && !videoChanged && !aboutChanged && !aboutEnChanged) {
+    if (!logoFile && !bannerFile && !bannerPreset && !videoChanged && !aboutChanged && !aboutEnChanged) {
       onClose();
       return;
     }
@@ -112,6 +122,9 @@ export default function EditMediaModal({
         return;
       }
       patch.bannerUrl = r.url;
+    } else if (bannerPreset) {
+      // Preset fourni — pas d'upload, l'URL publique va directement en base.
+      patch.bannerUrl = bannerPreset;
     }
     // Chaîne vide volontaire = effacement côté serveur (retirer une vidéo).
     if (videoChanged) patch.pitchVideoUrl = videoUrl.trim();
@@ -161,8 +174,55 @@ export default function EditMediaModal({
             label={t('editMedia.bannerLabel')}
             hint={t('editMedia.bannerHint')}
             initialUrl={currentBannerUrl}
-            onChange={setBannerFile}
+            onChange={(f) => {
+              setBannerFile(f);
+              // Un upload choisi prime sur un preset déjà sélectionné.
+              if (f) setBannerPreset(null);
+            }}
           />
+
+          <div>
+            <p className="mb-1.5 text-xs font-medium text-white">{t('editMedia.bannerPresetHeading')}</p>
+            <p className="mb-2 text-[11px] text-gray-500">{t('editMedia.bannerPresetHint')}</p>
+            <div className="grid grid-cols-2 gap-2">
+              {BANNER_PRESETS.map((preset) => {
+                const active = bannerPreset === preset.url && !bannerFile;
+                return (
+                  <button
+                    key={preset.url}
+                    type="button"
+                    onClick={() => {
+                      setBannerPreset(preset.url);
+                      // Un preset choisi prime sur un fichier déjà en attente d'upload.
+                      setBannerFile(null);
+                    }}
+                    className={
+                      'overflow-hidden rounded-lg border text-left transition ' +
+                      (active ? 'border-purple-500' : 'border-white/10 hover:border-white/25')
+                    }
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="block h-12 w-full bg-cover bg-center"
+                      style={{ backgroundImage: `url('${preset.url}')` }}
+                    />
+                    <span className="block px-2 py-1 text-[10px] font-medium text-ink-200">
+                      {t(preset.labelKey)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {bannerPreset && !bannerFile && (
+              <button
+                type="button"
+                onClick={() => setBannerPreset(null)}
+                className="mt-1.5 text-[10px] text-gray-500 underline hover:text-gray-300"
+              >
+                {t('editMedia.bannerPresetClear')}
+              </button>
+            )}
+          </div>
 
           <div>
             <label htmlFor="pitch-video-url" className="mb-1 block text-sm font-medium text-white">
@@ -251,7 +311,10 @@ export default function EditMediaModal({
             <button
               type="button"
               onClick={handleSave}
-              disabled={saving || (!logoFile && !bannerFile && !videoChanged && !aboutChanged && !aboutEnChanged)}
+              disabled={
+                saving ||
+                (!logoFile && !bannerFile && !bannerPreset && !videoChanged && !aboutChanged && !aboutEnChanged)
+              }
               className="flex-1 bg-purple-600 hover:bg-purple-500 text-white rounded-lg py-2 text-sm font-medium disabled:opacity-50"
             >
               {saving ? t('editMedia.saving') : t('editMedia.save')}

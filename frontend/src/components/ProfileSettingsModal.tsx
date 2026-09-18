@@ -94,22 +94,23 @@ export function ProfileSettingsModal({ onClose, profile, onSaved }: ProfileSetti
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 sm:p-4"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4 pt-8 sm:pt-14"
       role="dialog"
       aria-modal="true"
       aria-label={t('profile.settingsTitle')}
       onClick={handleClose}
     >
-      {/* Plein écran (30/08, sur demande explicite) : le panneau doit couvrir
-          toute la page, pas rester une boîte centrée avec la page visible
-          tout autour. `h-[100dvh]` plutôt que `100vh` sur mobile — évite le
-          redimensionnement quand la barre d'adresse du navigateur se
-          rétracte/apparaît. Marge résiduelle uniquement à partir de `sm:`,
-          pour garder un cadre visible sur desktop plutôt qu'un vrai
-          edge-to-edge qui lirait comme une erreur de mise en page sur grand
-          écran. */}
+      {/* 3e passe (30/08, nuit 2) — le plein écran total de la 2e passe
+          était "trop grand, prend trop de place". Retour à une boîte
+          bordée, mais légèrement plus large que la toute première version
+          (`max-w-xl` → `max-w-2xl`) et ancrée en HAUT de la page plutôt que
+          centrée verticalement (`items-start` + `pt-8`/`sm:pt-14` sur le
+          conteneur, au lieu de `items-center`) — c'est la disposition
+          explicitement demandée. `max-h-[85vh]` + `overflow-y-auto` sur le
+          panneau : le contenu (nombreux réglages) reste scrollable sans
+          repousser le panneau hors de l'écran sur les petits écrans. */}
       <div
-        className="modal-surface flex h-[100dvh] w-full flex-col space-y-5 overflow-y-auto rounded-none p-5 sm:h-[94vh] sm:max-h-[94vh] sm:w-[94vw] sm:max-w-3xl sm:rounded-2xl"
+        className="modal-surface my-4 flex max-h-[85vh] w-full max-w-2xl flex-col space-y-5 overflow-y-auto rounded-2xl p-5"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
@@ -151,21 +152,16 @@ export function ProfileSettingsModal({ onClose, profile, onSaved }: ProfileSetti
           <BackgroundSwitch />
         </div>
 
-        <div>
-          <ImagePreviewSettings />
-        </div>
-
-        <div>
-          <GlowStrengthSwitch />
-        </div>
-
-        {/* Barre d'aperçu — n'apparaît que si ThemeModeGrid/BackgroundSwitch
-            ont posé un aperçu pas encore validé (29/08 nuit). "Annuler"
-            revient à l'état déjà validé (aucune sauvegarde), "Activer ce
-            thème" applique et persiste les setters concernés (voir
-            confirmPreview dans ThemeContext.tsx) — indépendant du bouton
-            "Enregistrer" plus bas, qui ne synchronise que vers le profil
-            distant pour les autres appareils. */}
+        {/* Barre d'aperçu — juste sous "Fond de page" (30/08, 2e essai : le
+            sticky-top précédent ne convenait pas). ThemeModeGrid ET
+            BackgroundSwitch posent tous les deux ThemeContext.preview, donc
+            la barre reste pertinente ici pour les deux — mais elle est
+            désormais directement accolée aux fonds plutôt qu'accrochée en
+            haut de la modale. "Annuler" revient à l'état déjà validé
+            (aucune sauvegarde), "Activer ce thème" applique et persiste
+            (voir confirmPreview dans ThemeContext.tsx) — indépendant du
+            bouton "Enregistrer" plus bas, qui ne synchronise que vers le
+            profil distant pour les autres appareils. */}
         {preview && (
           <div className="flex items-center justify-between gap-3 rounded-lg border border-accent-violet/30 bg-accent-violet/10 px-3 py-2.5">
             <p className="text-[11px] leading-tight text-ink-200">{t('theme.previewBanner')}</p>
@@ -187,6 +183,14 @@ export function ProfileSettingsModal({ onClose, profile, onSaved }: ProfileSetti
             </div>
           </div>
         )}
+
+        <div>
+          <ImagePreviewSettings />
+        </div>
+
+        <div>
+          <GlowStrengthSwitch />
+        </div>
 
         <div className="space-y-4 border-t border-white/10 pt-4">
           <DensitySwitch />

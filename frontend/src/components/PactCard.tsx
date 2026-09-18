@@ -37,6 +37,8 @@ function fallbackBannerStyle(seed: string): React.CSSProperties {
 }
 
 import SolUsdAmount from './SolUsdAmount';
+import { IconLock } from './MiscIcons';
+import { IconRankLegendary } from './RankIcons';
 
 interface Props {
   pact: Pact;
@@ -412,10 +414,11 @@ export default function PactCard({
                 </button>
               ) : (
                 <span
-                  className="text-[11px] text-ink-500"
+                  className="inline-flex items-center gap-1 text-[11px] text-ink-500"
                   title="La description est figée une fois le pact finalisé : les membres ont approuvé ce texte, il ne peut plus être modifié on-chain."
                 >
-                  🔒 Description verrouillée (finalisé)
+                  <IconLock className="h-3 w-3 shrink-0" />
+                  Description verrouillée (finalisé)
                 </span>
               ))}
           </div>
@@ -524,7 +527,7 @@ export default function PactCard({
                     <span className="ml-1 text-accent-violet">(toi)</span>
                   )}
                   {m.wallet.toBase58() === pact.creator.toBase58() && (
-                    <span className="ml-1">👑</span>
+                    <IconRankLegendary className="ml-1 inline-block h-2.5 w-2.5 shrink-0 align-[-1px]" />
                   )}
                 </span>
                 {pact.status !== 'active' && (

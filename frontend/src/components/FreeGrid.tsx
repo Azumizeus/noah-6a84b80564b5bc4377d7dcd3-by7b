@@ -14,7 +14,7 @@
 // bloc plutôt qu'un simple ordre).
 // ═══════════════════════════════════════════════════════════════════
 import { useCallback, useState, type ReactNode } from 'react';
-import { WidthProvider, Responsive, type LayoutItem } from 'react-grid-layout/legacy';
+import { WidthProvider, Responsive, type LayoutItem, type Layout } from 'react-grid-layout/legacy';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 
@@ -74,13 +74,34 @@ function saveLayout(pageKey: string, wallet: string | null, layout: LayoutItem[]
 
 export function FreeGrid({ pageKey, wallet, items, rowHeight = 32 }: Props) {
   const [layout, setLayout] = useState<LayoutItem[]>(() => loadLayout(pageKey, wallet, items));
+  // Breakpoint actif — voir le commentaire sur handleLayoutChange plus bas.
+  const [breakpoint, setBreakpoint] = useState<string>('lg');
 
+  // 30/08, 2 passes :
+  //  1re passe (bug initial) : sur un breakpoint étroit (mobile, ou le
+  //  tout premier rendu avant mesure de largeur), react-grid-layout génère
+  //  un layout 'sm' à partir des tailles PAR DÉFAUT, sauvegardé par erreur
+  //  sous la même clé que le layout 'lg' personnalisé — écrasement
+  //  silencieux.
+  //  2e passe (régression introduite par le 1er correctif) : lire
+  //  `layouts.lg` au lieu du `layout` reçu cassait le drag EN DIRECT — RGL
+  //  ne met à jour `layouts.lg` qu'À LA FIN d'un geste, donc pendant un
+  //  glissé actif `layouts.lg` restait figé sur l'ancienne position et
+  //  l'élément semblait revenir en place à chaque mouvement (plus aucun
+  //  déplacement possible). Fix définitif : toujours utiliser le `layout`
+  //  reçu tel quel pour l'AFFICHAGE (fluide, quel que soit le breakpoint),
+  //  mais ne PERSISTER en localStorage que quand on est sur le breakpoint
+  //  'lg' (suivi via onBreakpointChange) — le seul qui a un vrai sens pour
+  //  une grille libre (le breakpoint 'sm' n'a qu'une colonne).
   const handleLayoutChange = useCallback(
-    (next: LayoutItem[]) => {
+    (current: Layout) => {
+      const next = [...current];
       setLayout(next);
-      saveLayout(pageKey, wallet, next);
+      if (breakpoint === 'lg') {
+        saveLayout(pageKey, wallet, next);
+      }
     },
-    [pageKey, wallet]
+    [pageKey, wallet, breakpoint]
   );
 
   return (
@@ -93,7 +114,8 @@ export function FreeGrid({ pageKey, wallet, items, rowHeight = 32 }: Props) {
       margin={[16, 16]}
       containerPadding={[0, 0]}
       draggableHandle=".free-grid-handle"
-      onLayoutChange={(current) => handleLayoutChange([...current])}
+      onBreakpointChange={setBreakpoint}
+      onLayoutChange={handleLayoutChange}
     >
       {items.map((it) => (
         <div key={it.id} data-grid={layout.find((l) => l.i === it.id)}>

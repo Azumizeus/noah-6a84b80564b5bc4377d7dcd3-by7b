@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import type { ChainMember } from '../../lib/pacts';
 import { formatAddress } from '../../lib/pacts';
+import { IconRankLegendary } from '../RankIcons';
 
 interface Props {
   members: ChainMember[];
@@ -81,9 +82,9 @@ export default function OrbitalCapTable({ members, creatorWallet, myWallet }: Pr
                   >
                     {addr.slice(0, 1)}
                   </div>
-                  <span className="font-mono text-[10px] text-white">
+                  <span className="inline-flex items-center gap-1 font-mono text-[10px] text-white">
                     {formatAddress(addr)}
-                    {isCreator && ' 👑'}
+                    {isCreator && <IconRankLegendary className="h-2.5 w-2.5 shrink-0" />}
                   </span>
                   {isMe && <span className="text-[9px] text-accent-violet">(toi)</span>}
                   <span className="font-mono text-xs font-bold text-accent-neon">

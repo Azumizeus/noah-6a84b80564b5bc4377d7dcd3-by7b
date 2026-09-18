@@ -20,7 +20,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { computeRank, fetchWalletXp } from '../lib/gamification';
 import { useLanguage } from '../lib/i18n/LanguageContext';
-import { RANK_EMOJI } from './RankBadge';
+import { RANK_ICON, IconRankAnon } from './RankIcons';
 import ClaimBurst from './ClaimBurst';
 
 interface Props {
@@ -116,11 +116,11 @@ export default function XpBar({ wallet, className = '' }: Props) {
       <div className="mb-1.5 flex items-center justify-between gap-2 text-[11px]">
         <span className="relative inline-flex items-center gap-1 font-medium text-accent-violet">
           {leveledUp && <ClaimBurst />}
-          <span
-            aria-hidden="true"
-            className={leveledUp ? 'xpbar-levelup-flash inline-block' : 'inline-block'}
-          >
-            {RANK_EMOJI[rankKey] ?? '👤'}
+          <span className={leveledUp ? 'xpbar-levelup-flash inline-flex' : 'inline-flex'}>
+            {(() => {
+              const Icon = RANK_ICON[rankKey] ?? IconRankAnon;
+              return <Icon className="h-3 w-3 shrink-0" />;
+            })()}
           </span>
           <span className={leveledUp ? 'xpbar-levelup-flash' : ''}>{t(`gamification.${rankKey}`)}</span>
         </span>

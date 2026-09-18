@@ -205,6 +205,24 @@ export function DashboardLayout({
             <div className="absolute inset-0 bg-canvas-900/55" />
           </div>
         )}
+        {background === 'constellation_hd' && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none fixed inset-0 bg-cover bg-center"
+            style={{ backgroundImage: "url('/backgrounds/constellation-hd.jpg')" }}
+          >
+            <div className="absolute inset-0 bg-canvas-900/55" />
+          </div>
+        )}
+        {background === 'wave_hd' && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none fixed inset-0 bg-cover bg-center"
+            style={{ backgroundImage: "url('/backgrounds/wave-hd.jpg')" }}
+          >
+            <div className="absolute inset-0 bg-canvas-900/55" />
+          </div>
+        )}
         {/* background === 'solid' : rien à ajouter ici. */}
 
         {/* Skip link pour clavier / screen reader */}

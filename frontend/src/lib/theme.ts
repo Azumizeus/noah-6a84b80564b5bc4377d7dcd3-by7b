@@ -153,7 +153,9 @@ export type BackgroundStyle =
   | 'scanlines'
   | 'nebula_hd'
   | 'grid_hd'
-  | 'aurora_hd';
+  | 'aurora_hd'
+  | 'constellation_hd'
+  | 'wave_hd';
 export const BACKGROUND_STYLES: BackgroundStyle[] = [
   'orbs',
   'grid',
@@ -163,6 +165,8 @@ export const BACKGROUND_STYLES: BackgroundStyle[] = [
   'nebula_hd',
   'grid_hd',
   'aurora_hd',
+  'constellation_hd',
+  'wave_hd',
 ];
 export const DEFAULT_BACKGROUND: BackgroundStyle = 'orbs';
 

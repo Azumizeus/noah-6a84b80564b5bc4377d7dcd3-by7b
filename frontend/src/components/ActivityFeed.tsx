@@ -3,11 +3,15 @@ import { useActivityFeed } from '../hooks/useActivityFeed';
 import { formatAddress, formatSol, explorerTxUrl } from '../lib/pacts';
 import type { PactEventKind } from '../lib/activity';
 import { useLanguage } from '../lib/i18n/LanguageContext';
+import { IconLock } from './MiscIcons';
 
-const KIND_ICON: Record<PactEventKind, string> = {
+// 30/08 : 'finalize' migré vers le SVG maison (voir MiscIcons.tsx) — les
+// 4 autres restent en emoji, pas encore refaits (pas demandés dans la
+// première passe icônes).
+const KIND_ICON: Record<PactEventKind, string | null> = {
   approve: '✅',
   fund: '💚',
-  finalize: '🔒',
+  finalize: null,
   distribute: '🔁',
   add_member: '➕',
 };
@@ -70,7 +74,11 @@ export function ActivityFeed({ projectPda }: Props) {
           {events.map((e) => (
             <li key={e.id} className="flex items-center justify-between gap-3 text-xs">
               <span className="min-w-0 truncate text-ink-300">
-                <span aria-hidden="true">{KIND_ICON[e.kind]}</span>{' '}
+                {KIND_ICON[e.kind] === null ? (
+                  <IconLock className="mr-1 inline-block h-3 w-3 shrink-0 align-[-1px]" />
+                ) : (
+                  <span aria-hidden="true">{KIND_ICON[e.kind]}</span>
+                )}{' '}
                 <a
                   href={explorerTxUrl(e.txSig)}
                   target="_blank"

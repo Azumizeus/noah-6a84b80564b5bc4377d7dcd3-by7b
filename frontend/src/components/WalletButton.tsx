@@ -135,23 +135,31 @@ export function WalletButton({
                 <span className="text-accent-violet">SOL</span>
               </p>
               {/* Autres tokens détenus (USDC, SKR/SKG si déployés, etc.)
-                  — lecture seule, voir lib/tokenBalances.ts. Rien si le
-                  wallet n'en détient aucun : pas de bruit visuel inutile. */}
-              {tokenBalances.length > 0 && (
-                <ul className="mt-2 space-y-1 border-t border-violet-500/10 pt-2">
-                  {tokenBalances.map((tb) => (
-                    <li
-                      key={tb.mint}
-                      className="flex items-center justify-between gap-2 font-mono text-xs tabular-nums text-ink-200"
-                    >
-                      <span className="truncate text-ink-400">
-                        {tb.symbol ?? truncateMint(tb.mint)}
-                      </span>
-                      <span>{formatTokenAmount(tb.uiAmount)}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
+                  — lecture seule, voir lib/tokenBalances.ts.
+                  30/08 : avant, rien ne s'affichait si le wallet ne
+                  détenait aucun token SPL — sur devnet c'est le cas le
+                  plus courant, et ça donnait l'impression que la fonction
+                  n'existait pas. Un message explicite remplace le "rien"
+                  silencieux. */}
+              <div className="mt-2 border-t border-violet-500/10 pt-2">
+                {tokenBalances.length > 0 ? (
+                  <ul className="space-y-1">
+                    {tokenBalances.map((tb) => (
+                      <li
+                        key={tb.mint}
+                        className="flex items-center justify-between gap-2 font-mono text-xs tabular-nums text-ink-200"
+                      >
+                        <span className="truncate text-ink-400">
+                          {tb.symbol ?? truncateMint(tb.mint)}
+                        </span>
+                        <span>{formatTokenAmount(tb.uiAmount)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-[10px] leading-tight text-ink-500">{t('walletButton.noTokens')}</p>
+                )}
+              </div>
             </div>
             <div className="my-1 h-px bg-violet-500/15" />
             <a
